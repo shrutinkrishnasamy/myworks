@@ -40,6 +40,8 @@
           <input type="number" class="form-control" id="price" step="0.1" placeholder="e.g. 105.5" required>
         </div>
         <button type="submit" class="btn btn-success w-100">Calculate Cost</button>
+        <br> <br>
+        <button type="button" class="btn btn-danger w-100" id="resetBtn">Clear</button> <br> <br>
       </form>
 
       <div class="alert alert-info mt-4 d-none" id="resultBox">
@@ -62,6 +64,10 @@
         document.getElementById('resultBox').classList.remove('d-none');
       }
     });
+    document.getElementById('resetBtn').addEventListener('click', function () {
+  document.getElementById('fuelForm').reset();
+  document.getElementById('resultBox').classList.add('d-none');
+});
   </script>
 
 </body>
