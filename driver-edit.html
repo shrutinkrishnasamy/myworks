@@ -14,6 +14,19 @@
         .navbar { background: var(--brand); }
         #alert-area { position: fixed; top: 70px; right: 20px; z-index: 2000; width: 320px; }
         .role-badge { font-size: .8rem; }
+        .image-preview {
+            max-width: 150px;
+            max-height: 150px;
+            border-radius: 8px;
+            object-fit: cover;
+            margin-top: 10px;
+            border: 1px solid #ddd;
+        }
+        .spinner-border-sm {
+            width: 1.2rem;
+            height: 1.2rem;
+            border-width: .15em;
+        }
     </style>
 </head>
 <body>
@@ -38,8 +51,14 @@
             <p class="text-muted">Update your vehicle details, costs, and manage your live location.</p>
             <form id="driver-edit-form">
                 <div class="mb-3">
-                    <label class="form-label">Vehicle Image URL (optional)</label>
-                    <input id="driver-vehicle-image" class="form-control" placeholder="e.g., https://example.com/taxi.jpg" />
+                    <label class="form-label">Vehicle Image</label>
+                    <input id="driver-vehicle-image-upload" type="file" accept="image/*" class="form-control" />
+                    <img id="image-preview" class="image-preview" src="https://placehold.co/150x150/e0e0e0/000000?text=No+Image" alt="Vehicle Image Preview" />
+                    <div id="upload-status" class="mt-2" style="display:none;">
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        <span class="ms-2">Uploading image...</span>
+                    </div>
+                    <button type="button" id="btn-remove-image" class="btn btn-sm btn-outline-danger mt-2">Remove Image</button>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Vehicle Info</label>
@@ -98,6 +117,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script> <!-- Added Firebase Storage -->
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -129,11 +149,12 @@
         }
 
         // ---------- Firebase boot ----------
-        let db = null, auth = null;
+        let db = null, auth = null, storage = null; // Added storage
         try{
             firebase.initializeApp(firebaseConfig);
             auth = firebase.auth();
             db = firebase.firestore();
+            storage = firebase.storage(); // Initialize Firebase Storage
         }catch(e){ showAlert('Firebase init failed: ' + e.message, 'danger', 0); }
 
         async function getProfileData(uid){
@@ -142,17 +163,138 @@
             return snap.exists ? snap.data() : null;
         }
 
+        // ---------- Image Upload Logic ----------
+        async function handleImageUpload(event) {
+            const file = event.target.files[0];
+            const imagePreview = document.getElementById('image-preview');
+            const uploadStatus = document.getElementById('upload-status');
+            const driverVehicleImageUpload = document.getElementById('driver-vehicle-image-upload');
+
+            if (!file) {
+                // If no file selected, reset to current profile image or placeholder
+                const u = auth.currentUser;
+                if (u) {
+                    const p = await getProfileData(u.uid);
+                    if (imagePreview) imagePreview.src = p?.vehicleImage || "https://placehold.co/150x150/e0e0e0/000000?text=No+Image";
+                } else {
+                    if (imagePreview) imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image";
+                }
+                return;
+            }
+
+            if (!file.type.startsWith('image/')) {
+                showAlert('Please upload an image file (e.g., JPEG, PNG).', 'warning');
+                if (driverVehicleImageUpload) driverVehicleImageUpload.value = ''; // Clear file input
+                if (imagePreview) imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image";
+                return;
+            }
+
+            if (file.size > 1 * 1024 * 1024) { // 1MB limit
+                showAlert('Image file size must be less than 1MB.', 'warning');
+                if (driverVehicleImageUpload) driverVehicleImageUpload.value = ''; // Clear file input
+                if (imagePreview) imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image";
+                return;
+            }
+
+            // Display image preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                if (imagePreview) imagePreview.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+
+            if (!auth.currentUser || !storage) {
+                showAlert('Not authenticated or Firebase Storage not initialized.', 'danger');
+                return;
+            }
+
+            if (uploadStatus) uploadStatus.style.display = 'flex'; // Show spinner
+
+            try {
+                // Create a storage reference
+                // Use a timestamp to ensure unique file names and avoid caching issues if same name file is re-uploaded
+                const fileName = `${auth.currentUser.uid}_${Date.now()}_${file.name}`;
+                const storageRef = storage.ref(`vehicle_images/${auth.currentUser.uid}/${fileName}`);
+                
+                // Upload the file
+                const snapshot = await storageRef.put(file);
+                
+                // Get the download URL
+                const downloadURL = await snapshot.ref.getDownloadURL();
+                
+                // Update Firestore with the new image URL
+                await db.collection('profiles').doc(auth.currentUser.uid).set({ vehicleImage: downloadURL }, { merge: true });
+                
+                showAlert('Image uploaded and saved successfully!', 'success');
+                // You don't need to clear the input value, the preview is showing.
+            } catch (error) {
+                console.error("Image upload failed:", error);
+                showAlert(`Image upload failed: ${error.message}. Please check Firebase Storage rules.`, 'danger');
+                if (driverVehicleImageUpload) driverVehicleImageUpload.value = ''; // Clear file input on error
+                // Reset preview to placeholder on error
+                if (imagePreview) imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image"; 
+            } finally {
+                if (uploadStatus) uploadStatus.style.display = 'none'; // Hide spinner
+            }
+        }
+
+        async function removeImage() {
+            const u = auth.currentUser;
+            const imagePreview = document.getElementById('image-preview');
+            const driverVehicleImageUpload = document.getElementById('driver-vehicle-image-upload');
+
+            if (!u) {
+                showAlert('Not signed in.', 'warning');
+                return;
+            }
+
+            try {
+                // Get current profile data to check if there's an image to remove
+                const p = await getProfileData(u.uid);
+                const currentImageUrl = p?.vehicleImage;
+
+                if (currentImageUrl) {
+                    // Optionally delete the file from storage
+                    // Note: This requires specific storage rules to allow file deletion.
+                    // For simplicity, we'll only remove the URL from Firestore here.
+                    // To delete from storage, you'd do:
+                    // const imageRef = storage.refFromURL(currentImageUrl);
+                    // await imageRef.delete();
+                }
+
+                // Update Firestore to remove the image URL
+                await db.collection('profiles').doc(u.uid).update({ vehicleImage: '' });
+                
+                // Reset the image preview and file input
+                if (imagePreview) imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image";
+                if (driverVehicleImageUpload) driverVehicleImageUpload.value = '';
+
+                showAlert('Vehicle image removed successfully!', 'success');
+            } catch (error) {
+                console.error("Error removing image:", error);
+                showAlert(`Error removing image: ${error.message}`, 'danger');
+            }
+        }
+
         // ---------- Profile UI & Logic ----------
         async function loadDriverData(){
             const u = auth.currentUser; if(!u) return;
             const p = await getProfileData(u.uid);
+            const imagePreview = document.getElementById('image-preview');
+
             if(p){
                 const driverVehicleInfo = document.getElementById('driver-vehicle-info');
                 if (driverVehicleInfo) driverVehicleInfo.value = p.vehicle||'';
                 const driverCostPerKm = document.getElementById('driver-cost-per-km');
                 if (driverCostPerKm) driverCostPerKm.value = p.costPerKm || 0;
-                const driverVehicleImage = document.getElementById('driver-vehicle-image');
-                if (driverVehicleImage) driverVehicleImage.value = p.vehicleImage || '';
+                
+                // Set image preview from saved URL
+                if (imagePreview) {
+                    imagePreview.src = p.vehicleImage || "https://placehold.co/150x150/e0e0e0/000000?text=No+Image";
+                    // Add onerror to fallback to placeholder if image URL is broken
+                    imagePreview.onerror = () => { imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image"; };
+                }
+
                 const driverLat = document.getElementById('driver-lat');
                 const driverLng = document.getElementById('driver-lng');
                 if(typeof p.lat === 'number' && driverLat) driverLat.value = p.lat;
@@ -165,12 +307,12 @@
             const u = auth.currentUser; if(!u) return showAlert('Not signed in');
             const vehicle = document.getElementById('driver-vehicle-info').value.trim();
             const costPerKm = parseFloat(document.getElementById('driver-cost-per-km').value);
-            const vehicleImage = document.getElementById('driver-vehicle-image').value.trim();
             
             if(!vehicle) return showAlert('Vehicle info is required.');
             if(Number.isNaN(costPerKm) || costPerKm <= 0) return showAlert('Enter a valid cost per km.');
             
-            const update = { vehicle, costPerKm, vehicleImage };
+            // Only update vehicle and cost per km, image handled by upload function
+            const update = { vehicle, costPerKm };
             await db.collection('profiles').doc(u.uid).set(update, { merge: true });
             showAlert('Driver details saved', 'success');
             renderHeaderSummary();
@@ -335,6 +477,17 @@
                     window.location.href = './login.html';
                 }
             });
+        }
+
+        // Event listeners for image upload and removal
+        const driverVehicleImageUpload = document.getElementById('driver-vehicle-image-upload');
+        if (driverVehicleImageUpload) {
+            driverVehicleImageUpload.addEventListener('change', handleImageUpload);
+        }
+
+        const btnRemoveImage = document.getElementById('btn-remove-image');
+        if (btnRemoveImage) {
+            btnRemoveImage.addEventListener('click', removeImage);
         }
 
         // ---------- Boot ----------
