@@ -107,28 +107,45 @@
             firebase.initializeApp(firebaseConfig);
             auth = firebase.auth();
             db = firebase.firestore();
-        }catch(e){ showAlert('Firebase init failed: ' + e.message, 'danger', 0); }
+            console.log("Firebase initialized in chat.html.");
+        }catch(e){ 
+            showAlert('Firebase init failed: ' + e.message, 'danger', 0); 
+            console.error("Firebase init error in chat.html:", e);
+        }
 
         async function getProfileData(uid){
             if(!db) return null;
-            const snap = await db.collection('profiles').doc(uid).get();
-            return snap.exists ? snap.data() : null;
+            try {
+                const snap = await db.collection('profiles').doc(uid).get();
+                return snap.exists ? snap.data() : null;
+            } catch (error) {
+                console.error("Error fetching profile data in chat.html:", error);
+                // Don't show an alert here, as it might happen before full UI is ready
+                return null;
+            }
         }
 
         // ---------- Chat ----------
         let currentMessagesUnsub = null;
         async function setupChat(){
+            console.log("setupChat called.");
             const params = new URLSearchParams(window.location.search);
             const driverId = params.get('driverId');
             const driverName = params.get('driverName') || 'Driver';
             const u = auth.currentUser;
 
+            console.log("Current user:", u ? u.uid : "None", "Driver ID:", driverId);
+
             if(!u) {
                 showAlert('Sign in to chat', 'warning');
+                console.warn("User not authenticated, redirecting to login.");
+                // Redirecting to login should be handled by onAuthChanged, but keeping this for immediate feedback
+                window.location.href = './login.html'; 
                 return;
             }
             if(!driverId) {
                 showAlert('No driver selected for chat.', 'danger');
+                console.error("No driver ID found in URL parameters.");
                 return;
             }
 
@@ -136,17 +153,36 @@
             window.currentChat = { chatId, driverId, driverName };
             const chatWithNameEl = document.getElementById('chat-with-name');
             if (chatWithNameEl) chatWithNameEl.textContent = decodeURIComponent(driverName);
+            console.log("Chat ID:", chatId, "Chatting with:", decodeURIComponent(driverName));
             
             const box = document.getElementById('chat-messages'); 
             if (box) box.innerHTML = '<div class="text-muted small">Loading…</div>';
-            if(currentMessagesUnsub) currentMessagesUnsub();
+            if(currentMessagesUnsub) {
+                currentMessagesUnsub(); // Unsubscribe from previous chat listener if any
+                console.log("Unsubscribed from previous chat listener.");
+            }
             
             const chatRef = db.collection('chats').doc(chatId);
-            const exists = await chatRef.get();
-            if(!exists.exists){ await chatRef.set({ participants:[u.uid, driverId], createdAt: firebase.firestore.FieldValue.serverTimestamp() }); }
+            console.log("Checking if chat document exists...");
+            try {
+                const exists = await chatRef.get();
+                if(!exists.exists){ 
+                    console.log("Chat document does not exist, creating it.");
+                    await chatRef.set({ participants:[u.uid, driverId], createdAt: firebase.firestore.FieldValue.serverTimestamp() }); 
+                    showAlert('New chat created!', 'info');
+                } else {
+                    console.log("Chat document already exists.");
+                }
+            } catch (error) {
+                console.error("Error checking/creating chat document:", error);
+                showAlert(`Error setting up chat: ${error.message}`, 'danger');
+                return; // Stop setup if initial chat doc creation/check fails
+            }
             
+            console.log("Setting up chat messages listener...");
             currentMessagesUnsub = chatRef.collection('messages').orderBy('ts').onSnapshot(snap=>{
-                if (box) box.innerHTML = '';
+                console.log("New message snapshot received. Docs:", snap.docs.length);
+                if (box) box.innerHTML = ''; // Clear existing messages
                 snap.forEach(doc=>{
                     const m = doc.data();
                     const row = document.createElement('div');
@@ -155,24 +191,47 @@
                     row.innerHTML = `<div class="${mine? 'text-end':''}"><span class="badge text-bg-${mine?'primary':'secondary'}">${m.fromName|| (mine? 'You':decodeURIComponent(driverName))}</span> <span>${m.text}</span></div>`;
                     if (box) box.appendChild(row);
                 });
-                if (box) box.scrollTop = box.scrollHeight;
-            }, err => showAlert('Chat error: ' + err.message));
+                if (box) box.scrollTop = box.scrollHeight; // Scroll to bottom
+            }, err => {
+                console.error("Chat messages stream error:", err);
+                showAlert('Chat error: ' + err.message, 'danger');
+            });
         }
 
         async function sendMessage(e){
             e.preventDefault();
-            const u = auth.currentUser; if(!u) return;
-            const chat = window.currentChat; if(!chat) return;
+            console.log("sendMessage called.");
+            const u = auth.currentUser; 
+            if(!u) {
+                console.warn("Cannot send message: No user authenticated.");
+                return;
+            }
+            const chat = window.currentChat; 
+            if(!chat) {
+                console.warn("Cannot send message: No active chat context.");
+                showAlert('Chat not set up. Please try reloading the page.', 'warning');
+                return;
+            }
             const txtInput = document.getElementById('chat-input');
             const txt = (txtInput ? txtInput.value : '').trim();
-            if(!txt) return;
-            await db.collection('chats').doc(chat.chatId).collection('messages').add({
-                from: u.uid,
-                fromName: (await getProfileData(u.uid))?.name || 'Guest',
-                text: txt,
-                ts: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            if (txtInput) txtInput.value='';
+            if(!txt) {
+                console.log("Message text is empty, not sending.");
+                return;
+            }
+            console.log("Sending message:", txt, "to chat:", chat.chatId);
+            try {
+                await db.collection('chats').doc(chat.chatId).collection('messages').add({
+                    from: u.uid,
+                    fromName: (await getProfileData(u.uid))?.name || 'Guest', // Fetch sender's name
+                    text: txt,
+                    ts: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                console.log("Message sent successfully.");
+                if (txtInput) txtInput.value=''; // Clear input after sending
+            } catch (error) {
+                console.error("Failed to send message:", error);
+                showAlert(`Failed to send message: ${error.message}. Check chat rules.`, 'danger');
+            }
         }
 
         // ---------- Header/Profile Summary ----------
@@ -210,19 +269,23 @@
 
         // ---------- Auth state management for this page ----------
         function onAuthChanged(user){
+            console.log("onAuthChanged called in chat.html. User:", user ? user.uid : "None");
             const logoutBtn = document.getElementById('btn-logout');
             if(user){
                 if (logoutBtn) logoutBtn.style.display='inline-block';
                 // Check if user's role is valid or redirect
                 getProfileData(user.uid).then(profile => {
                     if (!profile) {
+                        showAlert('Your profile could not be loaded. Please log in again.', 'warning');
+                        console.warn("Profile not found for authenticated user, redirecting to login.");
                         window.location.href = './login.html'; // Profile not found, redirect to login
                     } else {
                         renderHeaderSummary();
                         setupChat(); // Initialize chat for the logged-in user
                     }
                 }).catch(err => {
-                    showAlert('Error fetching profile: ' + err.message);
+                    showAlert('Error fetching profile: ' + err.message, 'danger');
+                    console.error("Error in onAuthChanged profile fetch:", err);
                     window.location.href = './login.html'; // Redirect to login on error
                 });
             }else{
@@ -233,6 +296,7 @@
                 if (userNameEl) userNameEl.textContent = '';
                 const badgeRoleEl = document.getElementById('badge-role');
                 if (badgeRoleEl) badgeRoleEl.style.display='none';
+                console.log("No user, redirecting to login.");
                 window.location.href = './login.html';
             }
         }
@@ -241,33 +305,50 @@
         const chatForm = document.getElementById('chat-form');
         if (chatForm) {
             chatForm.addEventListener('submit', sendMessage);
+            console.log("Chat form listener attached.");
         }
 
         const btnChatBack = document.getElementById('btn-chat-back');
         if (btnChatBack) {
             btnChatBack.addEventListener('click', ()=> {
+                console.log("Back button clicked.");
+                if (!auth.currentUser) {
+                    window.location.href = './login.html'; // Fallback if no user
+                    return;
+                }
                 getProfileData(auth.currentUser.uid).then(profile => {
                     if(profile?.role === 'driver'){
                         window.location.href = './driver-edit.html';
                     } else {
                         window.location.href = './user-main.html';
                     }
+                }).catch(err => {
+                    console.error("Error determining role for back button:", err);
+                    window.location.href = './user-main.html'; // Default back to user main on error
                 });
             });
+            console.log("Chat back button listener attached.");
         }
 
         const btnLogout = document.getElementById('btn-logout');
         if (btnLogout) {
             btnLogout.addEventListener('click', ()=> {
+                console.log("Logout button clicked.");
                 auth.signOut().then(() => {
                     window.location.href = './login.html';
+                }).catch(err => {
+                    console.error("Logout error:", err);
+                    showAlert(`Logout failed: ${err.message}`, 'danger');
                 });
             });
+            console.log("Logout button listener attached.");
         }
+
         const brandLink = document.getElementById('brand-link');
         if (brandLink) {
              brandLink.addEventListener('click', (e) => {
                 e.preventDefault();
+                console.log("Brand link clicked.");
                 if(auth.currentUser) {
                     getProfileData(auth.currentUser.uid).then(profile => {
                         if(profile?.role === 'driver') {
@@ -275,15 +356,20 @@
                         } else {
                             window.location.href = './user-main.html';
                         }
+                    }).catch(err => {
+                        console.error("Error determining role for brand link:", err);
+                        window.location.href = './user-main.html'; // Default back to user main on error
                     });
                 } else {
                     window.location.href = './login.html';
                 }
             });
+            console.log("Brand link listener attached.");
         }
 
         // ---------- Boot ----------
-        if(auth){ auth.onAuthStateChanged(onAuthChanged); }
+        console.log("Chat.html script booting.");
+        if(auth){ auth.onAuthStateChanged(onAuthChanged); } else { console.error("Firebase Auth not available."); }
     </script>
 </body>
 </html>
