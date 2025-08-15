@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Riderupee.in - Driver Control</title>
+    <link rel="icon" href="riderupeelogo.PNG" type="image/png" />
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+    <style>
+        :root { --brand: #ff6600; }
+        .navbar { background: var(--brand); }
+        #alert-area { position: fixed; top: 70px; right: 20px; z-index: 2000; width: 320px; }
+        .role-badge { font-size: .8rem; }
+    </style>
+</head>
+<body>
+    <!-- Top Nav -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#" id="brand-link">Riderupee.in</a>
+            <div class="d-flex align-items-center" id="nav-right">
+                <span id="user-name" class="text-white me-3"></span>
+                <span id="badge-role" class="badge text-bg-dark role-badge me-3" style="display:none"></span>
+                <button id="btn-profile-nav" class="btn btn-outline-light btn-sm me-2" style="display:none">Driver Control</button>
+                <button id="btn-logout" class="btn btn-outline-light btn-sm" style="display:none">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div id="alert-area"></div>
+
+    <div class="container my-4">
+        <div class="card p-4">
+            <h4>Driver Control Panel</h4>
+            <p class="text-muted">Update your vehicle details, costs, and manage your live location.</p>
+            <form id="driver-edit-form">
+                <div class="mb-3">
+                    <label class="form-label">Vehicle Image URL (optional)</label>
+                    <input id="driver-vehicle-image" class="form-control" placeholder="e.g., https://example.com/taxi.jpg" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Vehicle Info</label>
+                    <input id="driver-vehicle-info" class="form-control" placeholder="e.g. Toyota Innova - TN59AB1234" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Cost per km (₹)</label>
+                    <input id="driver-cost-per-km" type="number" step="0.5" class="form-control" placeholder="e.g., 12.50" required />
+                </div>
+                <div class="d-grid gap-2 mb-4">
+                    <button class="btn btn-primary" type="submit">Save Details</button>
+                </div>
+            </form>
+            
+            <h5>Live Location Updates</h5>
+            <div class="card p-3 bg-light">
+                <small class="text-muted mb-2">Your current location is how users find you. Enable auto-update for best results.</small>
+                <div class="row g-2 mb-2">
+                    <div class="col-6"><input id="driver-lat" class="form-control form-control-sm" placeholder="Latitude" /></div>
+                    <div class="col-6"><input id="driver-lng" class="form-control form-control-sm" placeholder="Longitude" /></div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button id="btn-update-loc" class="btn btn-sm btn-secondary" type="button">Manual Update</button>
+                    <button id="btn-auto-loc" class="btn btn-sm btn-success" type="button">Start Auto-update (GPS)</button>
+                    <button id="btn-auto-loc-stop" class="btn btn-sm btn-danger" type="button" style="display:none">Stop</button>
+                </div>
+            </div>
+
+            <div class="d-grid mt-4">
+                <button id="btn-driver-view-profile" class="btn btn-outline-secondary">View My Public Profile</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white text-center text-lg-start mt-5">
+        <div class="container p-4">
+            <div class="row align-items-center">
+                <div class="col-lg-6 col-md-12 mb-4 mb-md-0 text-start">
+                    <div class="d-flex align-items-center mb-2">
+                        <img src="riderupee.PNG" alt="RideRupee Logo" width="60" class="me-2" />
+                        <h5 class="mb-0">Riderupee.in</h5>
+                    </div>
+                    <p class="mt-2">₹ide. ₹elax. ₹epeat.</p>
+                </div>
+                <div class="col-lg-6 col-md-12 mb-4 mb-md-0 text-md-end">
+                    <p>Made with ❤️ in India</p>
+                    <p class="mb-0">Contact: <a href="mailto:riderupee@gmail.com" class="text-white">riderupee@gmail.com</a></p>
+                </div>
+            </div>
+        </div>
+        <div class="text-center p-3 bg-dark text-white">© 2025 RideRupee. All rights reserved.</div>
+    </footer>
+
+    <!-- Firebase (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // ===================== CONFIG — REPLACE WITH YOUR KEYS =====================
+        const firebaseConfig = {
+            apiKey: "AIzaSyCCsKOb_1Ug4oHbtuhnqqHIKILXKjTIB1s",
+            authDomain: "riderupee-3d6a7.firebaseapp.com",
+            projectId: "riderupee-3d6a7",
+            storageBucket: "riderupee-3d6a7.firebaseapp.com",
+            messagingSenderId: "723828361707",
+            appId: "1:723828361707:web:c077cae44fcbd54c2f71ae",
+            measurementId: "G-T79VTL0N2L"
+        };
+        const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY'; // This is not used on this page, but included for consistency
+        // =============================================================================
+
+        // ---------- UI helpers ----------
+        function showAlert(msg, type = 'danger', timeout = 6000){
+            const id = 'alert' + Date.now();
+            const container = document.getElementById('alert-area');
+            const div = document.createElement('div');
+            div.className = `alert alert-${type} alert-dismissible fade show`;
+            div.id = id;
+            div.innerHTML = `<div class="small">${msg}</div><button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+            container.appendChild(div);
+            if(timeout) setTimeout(()=>{ try{ const e = document.getElementById(id); if(e){ e.remove(); } } catch(e){} }, timeout);
+        }
+
+        // ---------- Firebase boot ----------
+        let db = null, auth = null;
+        try{
+            firebase.initializeApp(firebaseConfig);
+            auth = firebase.auth();
+            db = firebase.firestore();
+        }catch(e){ showAlert('Firebase init failed: ' + e.message, 'danger', 0); }
+
+        async function getProfileData(uid){
+            if(!db) return null;
+            const snap = await db.collection('profiles').doc(uid).get();
+            return snap.exists ? snap.data() : null;
+        }
+
+        // ---------- Profile UI & Logic ----------
+        async function loadDriverData(){
+            const u = auth.currentUser; if(!u) return;
+            const p = await getProfileData(u.uid);
+            if(p){
+                const driverVehicleInfo = document.getElementById('driver-vehicle-info');
+                if (driverVehicleInfo) driverVehicleInfo.value = p.vehicle||'';
+                const driverCostPerKm = document.getElementById('driver-cost-per-km');
+                if (driverCostPerKm) driverCostPerKm.value = p.costPerKm || 0;
+                const driverVehicleImage = document.getElementById('driver-vehicle-image');
+                if (driverVehicleImage) driverVehicleImage.value = p.vehicleImage || '';
+                const driverLat = document.getElementById('driver-lat');
+                const driverLng = document.getElementById('driver-lng');
+                if(typeof p.lat === 'number' && driverLat) driverLat.value = p.lat;
+                if(typeof p.lng === 'number' && driverLng) driverLng.value = p.lng;
+            }
+        }
+        
+        async function saveDriverDetails(e){
+            e.preventDefault();
+            const u = auth.currentUser; if(!u) return showAlert('Not signed in');
+            const vehicle = document.getElementById('driver-vehicle-info').value.trim();
+            const costPerKm = parseFloat(document.getElementById('driver-cost-per-km').value);
+            const vehicleImage = document.getElementById('driver-vehicle-image').value.trim();
+            
+            if(!vehicle) return showAlert('Vehicle info is required.');
+            if(Number.isNaN(costPerKm) || costPerKm <= 0) return showAlert('Enter a valid cost per km.');
+            
+            const update = { vehicle, costPerKm, vehicleImage };
+            await db.collection('profiles').doc(u.uid).set(update, { merge: true });
+            showAlert('Driver details saved', 'success');
+            renderHeaderSummary();
+        }
+
+        async function manualUpdateLoc(){
+            const u = auth.currentUser; if(!u) return showAlert('Not signed in');
+            const lat = parseFloat(document.getElementById('driver-lat').value);
+            const lng = parseFloat(document.getElementById('driver-lng').value);
+            if(Number.isNaN(lat) || Number.isNaN(lng)) return showAlert('Enter valid lat/lng');
+            await db.collection('profiles').doc(u.uid).set({ lat, lng }, { merge:true });
+            showAlert('Location updated', 'success');
+        }
+
+        let driverAutoTimer = null;
+        function startAutoLoc(){
+            const u = auth.currentUser; if(!u) return showAlert('Not signed in');
+            if(!navigator.geolocation) return showAlert('Geolocation not supported');
+            if(driverAutoTimer) clearInterval(driverAutoTimer);
+            
+            const btnAutoLoc = document.getElementById('btn-auto-loc');
+            const btnAutoLocStop = document.getElementById('btn-auto-loc-stop');
+            if (btnAutoLoc) btnAutoLoc.style.display = 'none';
+            if (btnAutoLocStop) btnAutoLocStop.style.display = 'inline-block';
+
+            const tick = ()=> navigator.geolocation.getCurrentPosition(async (pos)=>{
+                const lat = pos.coords.latitude, lng = pos.coords.longitude;
+                const driverLatEl = document.getElementById('driver-lat');
+                const driverLngEl = document.getElementById('driver-lng');
+                if (driverLatEl) driverLatEl.value = lat.toFixed(6);
+                if (driverLngEl) driverLngEl.value = lng.toFixed(6);
+                try{ await db.collection('profiles').doc(u.uid).set({ lat, lng }, { merge: true }); }catch(e){ console.log(e); }
+            }, (err)=> console.log('geo err', err), { enableHighAccuracy:true, timeout: 10000 });
+            tick();
+            driverAutoTimer = setInterval(tick, 20000);
+            showAlert('Auto location started', 'success');
+        }
+        function stopAutoLoc(){
+            if(driverAutoTimer){
+                clearInterval(driverAutoTimer);
+                driverAutoTimer = null;
+                const btnAutoLoc = document.getElementById('btn-auto-loc');
+                const btnAutoLocStop = document.getElementById('btn-auto-loc-stop');
+                if (btnAutoLoc) btnAutoLoc.style.display = 'inline-block';
+                if (btnAutoLocStop) btnAutoLocStop.style.display = 'none';
+                showAlert('Auto location stopped', 'info');
+            }
+        }
+        
+        // ---------- Header/Profile Summary ----------
+        async function renderHeaderSummary(){
+            const u = auth.currentUser;
+            const nameEl = document.getElementById('user-name');
+            const badge = document.getElementById('badge-role');
+            if(!u){ 
+                if (nameEl) nameEl.textContent=''; 
+                if (badge) badge.style.display='none'; 
+                return; 
+            }
+            
+            const p = await getProfileData(u.uid);
+            const userRole = p?.role || 'user'; // Default to user if not set
+            
+            if (nameEl) nameEl.textContent = p?.name || u.displayName || u.email || 'Guest';
+            if (badge) {
+                badge.textContent = userRole === 'driver' ? 'Driver' : 'User';
+                badge.style.display = 'inline-block';
+            }
+
+            const profileBtn = document.getElementById('btn-profile-nav');
+            if (profileBtn) {
+                profileBtn.textContent = 'Driver Control'; // Always Driver Control on this page
+                profileBtn.onclick = () => window.location.href = './driver-edit.html';
+                profileBtn.style.display = 'inline-block';
+            }
+        }
+
+        // ---------- Auth state management for this page ----------
+        function onAuthChanged(user){
+            const logoutBtn = document.getElementById('btn-logout');
+            if(user){
+                if (logoutBtn) logoutBtn.style.display='inline-block';
+                // Check if user is actually a driver
+                getProfileData(user.uid).then(profile => {
+                    if (profile?.role !== 'driver') {
+                        // If not a driver, redirect them to user main page
+                        window.location.href = './user-main.html';
+                    } else {
+                        // All good, user is a driver
+                        renderHeaderSummary();
+                        loadDriverData();
+                    }
+                }).catch(err => {
+                    showAlert('Error fetching profile: ' + err.message);
+                    window.location.href = './login.html'; // Redirect to login on error
+                });
+            }else{
+                if (logoutBtn) logoutBtn.style.display='none';
+                const profileBtn = document.getElementById('btn-profile-nav');
+                if (profileBtn) profileBtn.style.display='none';
+                const userNameEl = document.getElementById('user-name');
+                if (userNameEl) userNameEl.textContent = '';
+                const badgeRoleEl = document.getElementById('badge-role');
+                if (badgeRoleEl) badgeRoleEl.style.display='none';
+                window.location.href = './login.html';
+            }
+        }
+
+        // ---------- DOM events ----------
+        const driverEditForm = document.getElementById('driver-edit-form');
+        if (driverEditForm) {
+            driverEditForm.addEventListener('submit', saveDriverDetails);
+        }
+
+        const btnUpdateLoc = document.getElementById('btn-update-loc');
+        if (btnUpdateLoc) {
+            btnUpdateLoc.addEventListener('click', manualUpdateLoc);
+        }
+
+        const btnAutoLoc = document.getElementById('btn-auto-loc');
+        if (btnAutoLoc) {
+            btnAutoLoc.addEventListener('click', startAutoLoc);
+        }
+
+        const btnAutoLocStop = document.getElementById('btn-auto-loc-stop');
+        if (btnAutoLocStop) {
+            btnAutoLocStop.addEventListener('click', stopAutoLoc);
+        }
+
+        const btnDriverViewProfile = document.getElementById('btn-driver-view-profile');
+        if (btnDriverViewProfile) {
+            btnDriverViewProfile.addEventListener('click', () => {
+                if(auth.currentUser) {
+                    window.location.href = `./driver-profile.html?driverId=${auth.currentUser.uid}`;
+                } else {
+                    showAlert('Please sign in to view your profile.');
+                }
+            });
+        }
+
+        const btnLogout = document.getElementById('btn-logout');
+        if (btnLogout) {
+            btnLogout.addEventListener('click', ()=> {
+                auth.signOut().then(() => {
+                    window.location.href = './login.html';
+                });
+            });
+        }
+        const brandLink = document.getElementById('brand-link');
+        if (brandLink) {
+             brandLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                if(auth.currentUser) {
+                    getProfileData(auth.currentUser.uid).then(profile => {
+                        if(profile?.role === 'driver') {
+                            window.location.href = './driver-edit.html';
+                        } else {
+                            window.location.href = './user-main.html';
+                        }
+                    });
+                } else {
+                    window.location.href = './login.html';
+                }
+            });
+        }
+
+        // ---------- Boot ----------
+        if(auth){ auth.onAuthStateChanged(onAuthChanged); }
+    </script>
+</body>
+</html>
