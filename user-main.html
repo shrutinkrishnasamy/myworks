@@ -60,6 +60,8 @@
                     <h5>My Profile</h5>
                     <p id="user-profile-summary">Loading...</p>
                     <button id="btn-open-user-profile" class="btn btn-outline-primary btn-sm mt-3">Edit Profile</button>
+                    <!-- New button for drivers to access their control panel -->
+                    <button id="btn-driver-main-shortcut" class="btn btn-outline-success btn-sm mt-2" style="display:none;">Go to Driver Control</button>
                 </div>
                 <div class="card p-3">
                     <h5>My Chats</h5>
@@ -262,22 +264,26 @@
             const nameEl = document.getElementById('user-name');
             const badge = document.getElementById('badge-role');
             const profileSummaryEl = document.getElementById('user-profile-summary');
+            const btnDriverMainShortcut = document.getElementById('btn-driver-main-shortcut');
 
             if(!u){ 
-                nameEl.textContent=''; 
-                badge.style.display='none'; 
-                profileSummaryEl.textContent = 'Sign-in to load profile…';
+                if (nameEl) nameEl.textContent=''; 
+                if (badge) badge.style.display='none'; 
+                if (profileSummaryEl) profileSummaryEl.textContent = 'Sign-in to load profile…';
+                if (btnDriverMainShortcut) btnDriverMainShortcut.style.display = 'none'; // Hide if not logged in
                 return; 
             }
             
             const p = await getProfileData(u.uid);
             const userRole = p?.role || 'user'; // Default to user if not set
             
-            nameEl.textContent = p?.name || u.displayName || u.email || 'Guest';
-            badge.textContent = userRole === 'driver' ? 'Driver' : 'User';
-            badge.style.display = 'inline-block';
+            if (nameEl) nameEl.textContent = p?.name || u.displayName || u.email || 'Guest';
+            if (badge) {
+                badge.textContent = userRole === 'driver' ? 'Driver' : 'User';
+                badge.style.display = 'inline-block';
+            }
             
-            profileSummaryEl.innerHTML = `<strong>Name:</strong> ${p?.name || 'N/A'}<br/><strong>Role:</strong> ${userRole}`;
+            if (profileSummaryEl) profileSummaryEl.innerHTML = `<strong>Name:</strong> ${p?.name || 'N/A'}<br/><strong>Role:</strong> ${userRole}`;
 
             // Show/hide profile button based on role and direct to correct page
             const profileBtn = document.getElementById('btn-profile-nav');
@@ -290,6 +296,15 @@
                     profileBtn.onclick = () => window.location.href = './user-profile.html';
                 }
                 profileBtn.style.display = 'inline-block';
+            }
+
+            // Control visibility of the new "Go to Driver Control" button
+            if (btnDriverMainShortcut) {
+                if (userRole === 'driver') {
+                    btnDriverMainShortcut.style.display = 'block'; // Show if user is a driver
+                } else {
+                    btnDriverMainShortcut.style.display = 'none'; // Hide if user is not a driver
+                }
             }
         }
 
@@ -321,6 +336,8 @@
                 if (userNameEl) userNameEl.textContent = '';
                 const badgeRoleEl = document.getElementById('badge-role');
                 if (badgeRoleEl) badgeRoleEl.style.display='none';
+                const btnDriverMainShortcut = document.getElementById('btn-driver-main-shortcut');
+                if (btnDriverMainShortcut) btnDriverMainShortcut.style.display = 'none'; // Ensure hidden when logged out
                 window.location.href = './login.html';
             }
         }
@@ -377,6 +394,14 @@
                 } else {
                     window.location.href = './login.html';
                 }
+            });
+        }
+
+        // New button event listener
+        const btnDriverMainShortcut = document.getElementById('btn-driver-main-shortcut');
+        if (btnDriverMainShortcut) {
+            btnDriverMainShortcut.addEventListener('click', () => {
+                window.location.href = './driver-edit.html';
             });
         }
 
