@@ -262,18 +262,18 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
-    // ===================== CONFIG (REPLACE WITH YOUR KEYS IF NEEDED) =====================
+    // ===================== CONFIG — REPLACE WITH YOUR KEYS =====================
     const firebaseConfig = {
-      apiKey: "AIzaSyCCsKOb_1Ug4oHbtuhnqqHIKILXKjTIB1s",
-      authDomain: "riderupee-3d6a7.firebaseapp.com",
-      projectId: "riderupee-3d6a7",
-      storageBucket: "riderupee-3d6a7.firebasestorage.app",
-      messagingSenderId: "723828361707",
-      appId: "1:723828361707:web:c077cae44fcbd54c2f71ae",
-      measurementId: "G-T79VTL0N2L"
+      apiKey: "YOUR_FIREBASE_API_KEY",
+      authDomain: "YOUR_FIREBASE_AUTH_DOMAIN",
+      projectId: "YOUR_FIREBASE_PROJECT_ID",
+      storageBucket: "YOUR_FIREBASE_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_FIREBASE_SENDER_ID",
+      appId: "YOUR_FIREBASE_APP_ID",
+      measurementId: "YOUR_FIREBASE_MEASUREMENT_ID"
     };
-    const GOOGLE_MAPS_API_KEY = 'AIzaSyB-LqM7zE-Svy9UBUkgURdFYxRWP7HYJA8';
-    // ===============================================================================
+    const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
+    // =============================================================================
 
     // ---------- UI helpers ----------
     function showAlert(msg, type = 'danger', timeout = 6000){
@@ -315,9 +315,10 @@
       }catch(e){ showAlert('Maps init error: ' + e.message); }
     }
     function loadMaps(){
-      if(!GOOGLE_MAPS_API_KEY){ showAlert('Google Maps API key missing'); return; }
+      if(!GOOGLE_MAPS_API_KEY){ showAlert('Google Maps API key missing', 'warning'); return; }
       const s = document.createElement('script');
-      s.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap`; s.async = true; s.defer = true;
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap`;
+      s.async = true; s.defer = true;
       window.initMap = initMap;
       document.head.appendChild(s);
     }
@@ -345,8 +346,10 @@
     async function signInWithGoogle(){
       const role = document.getElementById('role-select').value || 'user';
       const provider = new firebase.auth.GoogleAuthProvider();
-      const res = await auth.signInWithPopup(provider);
-      await ensureProfile(res.user, { role });
+      try{
+        const res = await auth.signInWithPopup(provider);
+        await ensureProfile(res.user, { role });
+      }catch(e){ showAlert('Google sign-in failed: ' + e.message); }
     }
 
     async function sendOtp(){
@@ -398,7 +401,7 @@
     }
 
     // ---------- Driver presence / live update ----------
-    let driversUnsub = null, driverAutoTimer = null; // interval id
+    let driversUnsub = null, driverAutoTimer = null;
     function watchDrivers(){
       if(!db) return;
       if(driversUnsub) driversUnsub();
@@ -471,13 +474,16 @@
       document.getElementById('profile-phone').value = u.phoneNumber||'';
       document.getElementById('profile-role').value = p.role||'user';
       document.getElementById('profile-vehicle').value = p.vehicle||'';
+      if(typeof p.lat === 'number') document.getElementById('driver-lat').value = p.lat;
+      if(typeof p.lng === 'number') document.getElementById('driver-lng').value = p.lng;
       toggleDriverFields(p.role==='driver');
       showView('view-profile');
     }
     function toggleDriverFields(isDriver){
       document.querySelectorAll('.driver-only').forEach(el=> el.style.display = isDriver? 'block':'none');
-      document.getElementById('badge-role').style.display = 'inline-block';
-      document.getElementById('badge-role').textContent = isDriver? 'Driver' : 'User';
+      const badge = document.getElementById('badge-role');
+      badge.style.display = 'inline-block';
+      badge.textContent = isDriver? 'Driver' : 'User';
     }
 
     async function saveProfile(e){
@@ -625,7 +631,7 @@
     }
 
     // ---------- DOM events ----------
-    document.getElementById('btn-google-signin').addEventListener('click', ()=> signInWithGoogle().catch(e=> showAlert(e.message)) );
+    document.getElementById('btn-google-signin').addEventListener('click', ()=> signInWithGoogle() );
     document.getElementById('btn-send-otp').addEventListener('click', (e)=>{ e.preventDefault(); sendOtp(); });
     document.getElementById('btn-verify-otp').addEventListener('click', (e)=>{ e.preventDefault(); verifyOtp(); });
     document.getElementById('btn-guest').addEventListener('click', signInAsGuest);
@@ -657,12 +663,15 @@
 
     document.getElementById('chat-form').addEventListener('submit', sendMessage);
     document.getElementById('btn-chat-back').addEventListener('click', ()=> showView('view-main'));
-
     document.getElementById('btn-logout').addEventListener('click', ()=> auth.signOut());
 
     // ---------- Boot ----------
     if(auth){ auth.onAuthStateChanged(onAuthChanged); }
     loadMaps();
+
+    // Payment form submit
+    document.getElementById('payment-form').addEventListener('submit', submitPayment);
+
   </script>
 
   <!--
