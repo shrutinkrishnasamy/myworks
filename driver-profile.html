@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Riderupee.in - User Profile</title>
+    <title>Riderupee.in - Driver Profile</title>
     <link rel="icon" href="riderupeelogo.PNG" type="image/png" />
 
     <!-- Bootstrap CSS -->
@@ -24,7 +24,7 @@
             <div class="d-flex align-items-center" id="nav-right">
                 <span id="user-name" class="text-white me-3"></span>
                 <span id="badge-role" class="badge text-bg-dark role-badge me-3" style="display:none"></span>
-                <button id="btn-profile-nav" class="btn btn-outline-light btn-sm me-2" style="display:none">My Profile</button>
+                <button id="btn-profile-nav" class="btn btn-outline-light btn-sm me-2" style="display:none">Profile</button>
                 <button id="btn-logout" class="btn btn-outline-light btn-sm" style="display:none">Logout</button>
             </div>
         </div>
@@ -33,47 +33,13 @@
     <div id="alert-area"></div>
 
     <div class="container my-4">
-        <div class="card p-3">
-            <h4>My Profile</h4>
-            <p class="text-muted">Manage your personal information.</p>
-            <form id="user-profile-form">
-                <div class="mb-3">
-                    <label class="form-label">Name</label>
-                    <input id="user-profile-name" class="form-control" required />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Email</label>
-                    <input id="user-profile-email" class="form-control" />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Phone</label>
-                    <input id="user-profile-phone" class="form-control" />
-                </div>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-primary" type="submit">Save Profile</button>
-                    <button type="button" id="btn-back-main-from-user-profile" class="btn btn-link" onclick="window.location.href='./user-main.html'">Back</button>
-                </div>
-            </form>
-            <hr class="my-4">
-            <button id="btn-delete-account" class="btn btn-danger w-100">Delete My Account</button>
-        </div>
-    </div>
-
-    <!-- Confirmation Modal (instead of alert/confirm) -->
-    <div class="modal fade" id="deleteAccountModal" tabindex="-1" aria-labelledby="deleteAccountModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="deleteAccountModalLabel">Confirm Account Deletion</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    Are you sure you want to delete your account? This action is irreversible and will remove all your data.
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-danger" id="confirm-delete-account">Delete Account</button>
-                </div>
+        <div class="card p-4">
+            <div class="d-flex align-items-center justify-content-between mb-3">
+                <h4 class="mb-0">Driver Profile</h4>
+                <button type="button" id="btn-driver-profile-back" class="btn btn-link" onclick="window.location.href='./user-main.html'">Back</button>
+            </div>
+            <div id="driver-profile-details">
+                <div class="text-center text-muted">Loading driver profile...</div>
             </div>
         </div>
     </div>
@@ -117,7 +83,7 @@
             appId: "1:723828361707:web:c077cae44fcbd54c2f71ae",
             measurementId: "G-T79VTL0N2L"
         };
-        const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY'; // This is not used on this page, but included for consistency
+        const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY'; // Not used on this page
         // =============================================================================
 
         // ---------- UI helpers ----------
@@ -142,43 +108,51 @@
 
         async function getProfileData(uid){
             if(!db) return null;
-            const snap = await db.collection('profiles').doc(uid).get();
-            return snap.exists ? snap.data() : null;
-        }
-
-        // ---------- Profile UI & Logic ----------
-        async function loadUserData(){
-            const u = auth.currentUser; if(!u) return;
-            const p = await getProfileData(u.uid);
-            if(p){
-                const userProfileName = document.getElementById('user-profile-name');
-                if (userProfileName) userProfileName.value = p.name||'';
-                const userProfileEmail = document.getElementById('user-profile-email');
-                if (userProfileEmail) userProfileEmail.value = u.email||''; // Email comes from Auth user object
-                const userProfilePhone = document.getElementById('user-profile-phone');
-                if (userProfilePhone) userProfilePhone.value = u.phoneNumber||''; // Phone comes from Auth user object
+            try {
+                const snap = await db.collection('profiles').doc(uid).get();
+                return snap.exists ? snap.data() : null;
+            } catch (error) {
+                console.error("Error fetching profile data:", error);
+                showAlert(`Error fetching profile: ${error.message}`, 'danger');
+                return null;
             }
         }
 
-        async function saveUserProfile(e){
-            e.preventDefault();
-            const u = auth.currentUser; if(!u) return showAlert('Not signed in');
-            const name = document.getElementById('user-profile-name').value.trim();
-            const email = document.getElementById('user-profile-email').value.trim();
-            const phone = document.getElementById('user-profile-phone').value.trim();
+        async function loadDriverProfile(){
+            const params = new URLSearchParams(window.location.search);
+            const driverId = params.get('driverId');
+            const detailsEl = document.getElementById('driver-profile-details');
 
-            const update = { name };
-            // Add email and phone to update object if they are not empty
-            // Note: Updating email/phone in Firebase Auth directly is more complex and usually involves re-authentication.
-            // This just updates the profile document in Firestore.
-            if (email) update.email = email;
-            if (phone) update.phone = phone;
+            if (!driverId) {
+                if (detailsEl) detailsEl.innerHTML = '<div class="alert alert-danger">No driver ID specified.</div>';
+                return;
+            }
 
-            await db.collection('profiles').doc(u.uid).set(update, { merge: true });
-            showAlert('Profile saved', 'success');
-            renderHeaderSummary();
+            const driver = await getProfileData(driverId);
+            if (!driver || driver.role !== 'driver') {
+                if (detailsEl) detailsEl.innerHTML = '<div class="alert alert-warning">Driver profile not found or user is not a driver.</div>';
+                return;
+            }
+            
+            const profileHtml = `
+                <div class="card p-3 mb-3">
+                    <div class="text-center mb-3">
+                        ${driver.vehicleImage ? `<img src="${driver.vehicleImage}" class="img-fluid rounded-3 mb-2" style="max-height: 200px; object-fit: cover;" alt="Vehicle Image" onerror="this.onerror=null;this.src='https://placehold.co/200x150/e0e0e0/000000?text=No+Image';" />` : '<img src="https://placehold.co/200x150/e0e0e0/000000?text=No+Image" class="img-fluid rounded-3 mb-2" alt="No Image" />'}
+                        <h4>${driver.name || 'Driver'}</h4>
+                        <p class="text-muted mb-0"><strong>Email:</strong> ${driver.email || 'Not specified'}</p>
+                        <p class="text-muted mb-0"><strong>Phone:</strong> ${driver.phone || 'Not specified'}</p>
+                        ${driver.age ? `<p class="text-muted mb-0"><strong>Age:</strong> ${driver.age}</p>` : '<p class="text-muted mb-0"><strong>Age:</strong> Not specified</p>'}
+                        ${driver.address ? `<p class="text-muted mb-0"><strong>Address:</strong> ${driver.address}</p>` : '<p class="text-muted mb-0"><strong>Address:</strong> Not specified</p>'}
+                        ${driver.costPerKm ? `<p class="fw-bold fs-5 text-success">₹${driver.costPerKm.toFixed(2)} / km</p>` : ''}
+                    </div>
+                    <div class="d-grid">
+                        <button class="btn btn-primary btn-lg" onclick="window.location.href='./chat.html?driverId=${driverId}&driverName=${encodeURIComponent(driver.name || 'Driver')}'">Chat with Driver</button>
+                    </div>
+                </div>
+            `;
+            if (detailsEl) detailsEl.innerHTML = profileHtml;
         }
-        
+
         // ---------- Header/Profile Summary ----------
         async function renderHeaderSummary(){
             const u = auth.currentUser;
@@ -212,81 +186,21 @@
             }
         }
 
-        // ---------- Account Deletion Logic for Users ----------
-        async function deleteUserAccount() {
-            const u = auth.currentUser;
-            if (!u) {
-                showAlert('You must be signed in to delete your account.', 'warning');
-                return;
-            }
-
-            // Show confirmation modal
-            const deleteModal = new bootstrap.Modal(document.getElementById('deleteAccountModal'));
-            deleteModal.show();
-
-            // Handle confirmation from the modal
-            document.getElementById('confirm-delete-account').onclick = async () => {
-                deleteModal.hide(); // Hide modal immediately after confirmation
-                
-                try {
-                    // 1. Delete user's profile data from Firestore
-                    await db.collection('profiles').doc(u.uid).delete();
-                    showAlert('Profile data deleted from Firestore.', 'info');
-
-                    // 2. Delete the Firebase Authentication user
-                    await u.delete();
-                    showAlert('Account deleted successfully!', 'success');
-                    // Redirect to login page after successful deletion
-                    window.location.href = './login.html';
-
-                } catch (error) {
-                    console.error("Error deleting account:", error);
-                    showAlert(`Account deletion failed: ${error.message}. You might need to re-authenticate if you signed in a long time ago.`, 'danger');
-                    // If error is 'auth/requires-recent-login', inform user they need to re-authenticate
-                    if (error.code === 'auth/requires-recent-login') {
-                        showAlert('Please re-authenticate (log out and log back in) before attempting to delete your account again, then try deleting immediately after logging in.', 'warning', 10000);
-                    }
-                }
-            };
-        }
-
         // ---------- Auth state management for this page ----------
         function onAuthChanged(user){
             const logoutBtn = document.getElementById('btn-logout');
             if(user){
                 if (logoutBtn) logoutBtn.style.display='inline-block';
-                // Check if user is actually a user (passenger)
-                getProfileData(user.uid).then(profile => {
-                    if (profile?.role === 'driver') {
-                        // If a driver somehow lands here, redirect to their page
-                        window.location.href = './driver-edit.html';
-                    } else {
-                        // All good, user is a passenger
-                        renderHeaderSummary();
-                        loadUserData();
-                    }
-                }).catch(err => {
-                    showAlert('Error fetching profile: ' + err.message);
-                    window.location.href = './login.html'; // Redirect to login on error
-                });
+                // No role-based redirect needed here, as this page shows specific driver profile
+                renderHeaderSummary();
+                loadDriverProfile();
             }else{
-                if (logoutBtn) logoutBtn.style.display='none';
-                const profileBtn = document.getElementById('btn-profile-nav');
-                if (profileBtn) profileBtn.style.display='none';
-                const userNameEl = document.getElementById('user-name');
-                if (userNameEl) userNameEl.textContent = '';
-                const badgeRoleEl = document.getElementById('badge-role');
-                if (badgeRoleEl) badgeRoleEl.style.display='none';
+                // Not logged in, redirect to login page
                 window.location.href = './login.html';
             }
         }
 
         // ---------- DOM events ----------
-        const userProfileForm = document.getElementById('user-profile-form');
-        if (userProfileForm) {
-            userProfileForm.addEventListener('submit', saveUserProfile);
-        }
-        
         const btnLogout = document.getElementById('btn-logout');
         if (btnLogout) {
             btnLogout.addEventListener('click', ()=> {
@@ -295,7 +209,6 @@
                 });
             });
         }
-        
         const brandLink = document.getElementById('brand-link');
         if (brandLink) {
              brandLink.addEventListener('click', (e) => {
@@ -312,12 +225,6 @@
                     window.location.href = './login.html';
                 }
             });
-        }
-
-        // New event listener for Delete Account button
-        const btnDeleteAccount = document.getElementById('btn-delete-account');
-        if (btnDeleteAccount) {
-            btnDeleteAccount.addEventListener('click', deleteUserAccount);
         }
 
         // ---------- Boot ----------
