@@ -51,6 +51,20 @@
 
                     <div class="text-center text-muted my-2">— or —</div>
 
+                    <!-- Email & Password Sign-in -->
+                    <div class="card p-3 border-0 bg-light mb-3">
+                        <label class="form-label">Email & Password</label>
+                        <input id="email-input" type="email" class="form-control mb-2" placeholder="Email address" />
+                        <input id="password-input" type="password" class="form-control mb-2" placeholder="Password" />
+                        <div class="d-flex gap-2">
+                            <button id="btn-email-signin" class="btn btn-info w-50" type="button">Sign In</button>
+                            <button id="btn-email-register" class="btn btn-outline-info w-50" type="button">Register</button>
+                        </div>
+                    </div>
+
+                    <div class="text-center text-muted my-2">— or —</div>
+
+                    <!-- Phone Sign-in (OTP) -->
                     <div class="card p-3 border-0 bg-light mb-3">
                         <label class="form-label">Phone sign-in (OTP)</label>
                         <div class="input-group mb-2">
@@ -133,7 +147,18 @@
             db = firebase.firestore();
         }catch(e){ showAlert('Firebase init failed: ' + e.message, 'danger', 0); }
 
-        // ---------- Auth (Google + Phone) ----------
+        async function getProfileData(uid){
+            if(!db) return null;
+            try {
+                const snap = await db.collection('profiles').doc(uid).get();
+                return snap.exists ? snap.data() : null;
+            } catch (error) {
+                console.error("Error fetching profile data:", error);
+                return null;
+            }
+        }
+
+        // ---------- Auth (Google + Phone + Email/Password) ----------
         let recaptchaVerifier = null, confirmationResult = null;
         function setupRecaptcha(){
             try{
@@ -145,8 +170,8 @@
 
         async function signInWithGoogle(){
             const role = document.getElementById('role-select').value || 'user';
-            const provider = new firebase.auth.GoogleAuthProvider();
             try{
+                const provider = new firebase.auth.GoogleAuthProvider();
                 const res = await auth.signInWithPopup(provider);
                 await ensureProfile(res.user, { role });
             }catch(e){ showAlert('Google sign-in failed: ' + e.message); }
@@ -173,6 +198,40 @@
             }catch(e){ showAlert('OTP verification failed: ' + e.message); }
         }
 
+        async function handleEmailSignIn(){
+            const email = document.getElementById('email-input').value.trim();
+            const password = document.getElementById('password-input').value.trim();
+            if (!email || !password) {
+                return showAlert('Please enter both email and password.', 'warning');
+            }
+            try {
+                const res = await auth.signInWithEmailAndPassword(email, password);
+                const role = document.getElementById('role-select').value || 'user';
+                await ensureProfile(res.user, { role });
+            } catch (e) {
+                showAlert('Email sign-in failed: ' + e.message, 'danger');
+            }
+        }
+
+        async function handleEmailRegister(){
+            const email = document.getElementById('email-input').value.trim();
+            const password = document.getElementById('password-input').value.trim();
+            if (!email || !password) {
+                return showAlert('Please enter both email and password to register.', 'warning');
+            }
+            if (password.length < 6) {
+                return showAlert('Password must be at least 6 characters long.', 'warning');
+            }
+            try {
+                const res = await auth.createUserWithEmailAndPassword(email, password);
+                const role = document.getElementById('role-select').value || 'user';
+                await ensureProfile(res.user, { role });
+                showAlert('Registration successful! You are now logged in.', 'success');
+            } catch (e) {
+                showAlert('Email registration failed: ' + e.message, 'danger');
+            }
+        }
+
         async function ensureProfile(user, opts={}){
             if(!db) return;
             const ref = db.collection('profiles').doc(user.uid);
@@ -180,9 +239,9 @@
             const newProfileData = {
                 uid: user.uid,
                 name: user.displayName || '',
-                email: user.email || '',
+                email: user.email || user.email || '', // Use user.email for both existing and new
                 phone: user.phoneNumber || '',
-                role: opts.role || 'user',
+                role: opts.role || 'user', // Use the selected role
                 vehicle: '',
                 costPerKm: 0,
                 vehicleImage: '',
@@ -191,17 +250,33 @@
 
             if(!snap.exists){
                 await ref.set(newProfileData);
+                console.log("New profile created with role:", opts.role);
             } else {
                 const existingData = snap.data();
+                const updateData = {};
+
                 if(existingData.name === ''){
-                    await ref.update({ name: user.displayName || (existingData.role === 'driver' ? 'New Driver' : 'New User') });
+                    updateData.name = user.displayName || (opts.role === 'driver' ? 'New Driver' : 'New User');
                 }
+                // Always update email/phone if they come from auth and are empty in profile
+                if (!existingData.email && user.email) {
+                    updateData.email = user.email;
+                }
+                if (!existingData.phone && user.phoneNumber) {
+                    updateData.phone = user.phoneNumber;
+                }
+                // This is the key: always update the role to the one selected in the current login attempt
                 if(existingData.role !== opts.role){
-                    await ref.update({ role: opts.role });
+                    updateData.role = opts.role;
+                    console.log("Updating existing profile role to:", opts.role);
+                }
+
+                if (Object.keys(updateData).length > 0) {
+                    await ref.update(updateData);
                 }
             }
 
-            // Redirect based on role after successful login/profile setup
+            // This redirect logic is now the primary handler after successful login
             if (opts.role === 'driver') {
                 window.location.href = './driver-edit.html'; // Redirect to driver control panel
             } else {
@@ -209,22 +284,23 @@
             }
         }
         
-        // ---------- Auth state ----------
+        // ---------- Auth state (only for re-entry to login.html if already logged in) ----------
         function onAuthChanged(user){
+            // If a user is already authenticated and lands on login.html (e.g., by typing the URL)
+            // we should redirect them to their respective main page based on their *stored* role.
             if(user){
-                // If already logged in, redirect based on role
-                db.collection('profiles').doc(user.uid).get().then(doc => {
-                    const profile = doc.data();
+                getProfileData(user.uid).then(profile => {
                     if (profile && profile.role === 'driver') {
                         window.location.href = './driver-edit.html';
                     } else {
                         window.location.href = './user-main.html';
                     }
                 }).catch(err => {
-                    showAlert('Error fetching profile: ' + err.message);
-                    window.location.href = './user-main.html'; // Default to user main on error
+                    // If profile fetch fails (e.g., permissions), keep them on login page and alert
+                    showAlert('Error fetching profile on page load: ' + err.message + '. Please try logging in again.', 'danger');
                 });
             }
+            // If no user, stay on login.html, nothing to do here.
         }
 
         // ---------- DOM events ----------
@@ -243,9 +319,43 @@
             btnVerifyOtp.addEventListener('click', (e)=>{ e.preventDefault(); verifyOtp(); });
         }
 
+        const btnEmailSignIn = document.getElementById('btn-email-signin');
+        if (btnEmailSignIn) {
+            btnEmailSignIn.addEventListener('click', handleEmailSignIn);
+        }
+
+        const btnEmailRegister = document.getElementById('btn-email-register');
+        if (btnEmailRegister) {
+            btnEmailRegister.addEventListener('click', handleEmailRegister);
+        }
+
         const brandLink = document.getElementById('brand-link');
         if (brandLink) {
-            brandLink.addEventListener('click', (e) => { e.preventDefault(); window.location.href = './login.html'; });
+            brandLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (auth.currentUser) {
+                    getProfileData(auth.currentUser.uid).then(profile => {
+                        if (profile?.role === 'driver') {
+                            window.location.href = './driver-edit.html';
+                        } else {
+                            window.location.href = './user-main.html';
+                        }
+                    }).catch(err => {
+                        showAlert('Could not determine role for brand link. Staying on login.', 'info');
+                    });
+                } else {
+                    window.location.href = './login.html';
+                }
+            });
+        }
+
+        const btnLogout = document.getElementById('btn-logout');
+        if (btnLogout) {
+            btnLogout.addEventListener('click', ()=> {
+                auth.signOut().then(() => {
+                    window.location.href = './login.html';
+                });
+            });
         }
 
         // ---------- Boot ----------
