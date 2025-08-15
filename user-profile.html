@@ -43,17 +43,38 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Email</label>
-                    <input id="user-profile-email" class="form-control" /> <!-- Removed disabled -->
+                    <input id="user-profile-email" class="form-control" />
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Phone</label>
-                    <input id="user-profile-phone" class="form-control" /> <!-- Removed disabled -->
+                    <input id="user-profile-phone" class="form-control" />
                 </div>
                 <div class="d-flex gap-2">
                     <button class="btn btn-primary" type="submit">Save Profile</button>
                     <button type="button" id="btn-back-main-from-user-profile" class="btn btn-link" onclick="window.location.href='./user-main.html'">Back</button>
                 </div>
             </form>
+            <hr class="my-4">
+            <button id="btn-delete-account" class="btn btn-danger w-100">Delete My Account</button>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal (instead of alert/confirm) -->
+    <div class="modal fade" id="deleteAccountModal" tabindex="-1" aria-labelledby="deleteAccountModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteAccountModalLabel">Confirm Account Deletion</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    Are you sure you want to delete your account? This action is irreversible and will remove all your data.
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirm-delete-account">Delete Account</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -133,9 +154,9 @@
                 const userProfileName = document.getElementById('user-profile-name');
                 if (userProfileName) userProfileName.value = p.name||'';
                 const userProfileEmail = document.getElementById('user-profile-email');
-                if (userProfileEmail) userProfileEmail.value = u.email||'';
+                if (userProfileEmail) userProfileEmail.value = u.email||''; // Email comes from Auth user object
                 const userProfilePhone = document.getElementById('user-profile-phone');
-                if (userProfilePhone) userProfilePhone.value = u.phoneNumber||'';
+                if (userProfilePhone) userProfilePhone.value = u.phoneNumber||''; // Phone comes from Auth user object
             }
         }
 
@@ -143,11 +164,13 @@
             e.preventDefault();
             const u = auth.currentUser; if(!u) return showAlert('Not signed in');
             const name = document.getElementById('user-profile-name').value.trim();
-            const email = document.getElementById('user-profile-email').value.trim(); // Get email value
-            const phone = document.getElementById('user-profile-phone').value.trim(); // Get phone value
+            const email = document.getElementById('user-profile-email').value.trim();
+            const phone = document.getElementById('user-profile-phone').value.trim();
 
             const update = { name };
             // Add email and phone to update object if they are not empty
+            // Note: Updating email/phone in Firebase Auth directly is more complex and usually involves re-authentication.
+            // This just updates the profile document in Firestore.
             if (email) update.email = email;
             if (phone) update.phone = phone;
 
@@ -187,6 +210,44 @@
                 }
                 profileBtn.style.display = 'inline-block';
             }
+        }
+
+        // ---------- Account Deletion Logic for Users ----------
+        async function deleteUserAccount() {
+            const u = auth.currentUser;
+            if (!u) {
+                showAlert('You must be signed in to delete your account.', 'warning');
+                return;
+            }
+
+            // Show confirmation modal
+            const deleteModal = new bootstrap.Modal(document.getElementById('deleteAccountModal'));
+            deleteModal.show();
+
+            // Handle confirmation from the modal
+            document.getElementById('confirm-delete-account').onclick = async () => {
+                deleteModal.hide(); // Hide modal immediately after confirmation
+                
+                try {
+                    // 1. Delete user's profile data from Firestore
+                    await db.collection('profiles').doc(u.uid).delete();
+                    showAlert('Profile data deleted from Firestore.', 'info');
+
+                    // 2. Delete the Firebase Authentication user
+                    await u.delete();
+                    showAlert('Account deleted successfully!', 'success');
+                    // Redirect to login page after successful deletion
+                    window.location.href = './login.html';
+
+                } catch (error) {
+                    console.error("Error deleting account:", error);
+                    showAlert(`Account deletion failed: ${error.message}. You might need to re-authenticate if you signed in a long time ago.`, 'danger');
+                    // If error is 'auth/requires-recent-login', inform user they need to re-authenticate
+                    if (error.code === 'auth/requires-recent-login') {
+                        showAlert('Please re-authenticate (log out and log back in) before attempting to delete your account again, then try deleting immediately after logging in.', 'warning', 10000);
+                    }
+                }
+            };
         }
 
         // ---------- Auth state management for this page ----------
@@ -251,6 +312,12 @@
                     window.location.href = './login.html';
                 }
             });
+        }
+
+        // New event listener for Delete Account button
+        const btnDeleteAccount = document.getElementById('btn-delete-account');
+        if (btnDeleteAccount) {
+            btnDeleteAccount.addEventListener('click', deleteUserAccount);
         }
 
         // ---------- Boot ----------
