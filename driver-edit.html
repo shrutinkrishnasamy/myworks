@@ -433,6 +433,26 @@
                 if (btnAutoLocStop) btnAutoLocStop.style.display = 'none';
                 showAlert('Auto location stopped', 'info');
             }
+            
+            // --- NEW: Clear location from Firestore to stop sharing ---
+            const u = auth.currentUser;
+            if (u && db) {
+                db.collection('profiles').doc(u.uid).update({
+                    lat: firebase.firestore.FieldValue.delete(), // Set to undefined
+                    lng: firebase.firestore.FieldValue.delete()  // Set to undefined
+                }).then(() => {
+                    showAlert('Live location sharing stopped.', 'info');
+                    // Also clear input fields
+                    const driverLatEl = document.getElementById('driver-lat');
+                    const driverLngEl = document.getElementById('driver-lng');
+                    if (driverLatEl) driverLatEl.value = '';
+                    if (driverLngEl) driverLngEl.value = '';
+                }).catch(error => {
+                    console.error("Error stopping location sharing:", error);
+                    showAlert('Failed to stop live location sharing: ' + error.message, 'danger');
+                });
+            }
+            // --- END NEW ---
         }
         
         // ---------- Header/Profile Summary ----------
