@@ -53,9 +53,9 @@
             </div>
 
             <div class="d-grid gap-2 mt-4" id="driver-profile-actions">
-                <!-- This button will appear if a user is viewing ANOTHER driver's profile -->
+                <!-- This button will ALWAYS appear -->
                 <button class="btn btn-primary btn-lg" id="btn-chat-driver" style="display:none;">Chat with Driver</button>
-                <!-- This button will appear if the driver is viewing THEIR OWN profile -->
+                <!-- This button will appear ONLY if the driver is viewing THEIR OWN profile -->
                 <button class="btn btn-outline-primary btn-lg" id="btn-edit-my-profile" style="display:none;">Edit My Profile</button>
             </div>
         </div>
@@ -186,23 +186,22 @@
             `;
             if (detailsEl) detailsEl.innerHTML = profileHtml;
 
-            // Conditionally show buttons based on whether the current user is the profile owner or not.
-            // If the current user IS the driver whose profile is being viewed:
+            // Chat button is now ALWAYS visible
+            chatButton.style.display = 'block'; 
+            chatButton.onclick = () => {
+                if (!auth.currentUser) {
+                    showAlert('Please sign in to chat with a driver.', 'warning');
+                    return;
+                }
+                window.location.href = `./chat.html?driverId=${driverId}&driverName=${encodeURIComponent(driver.name || 'Driver')}`;
+            };
+            
+            // Edit button visibility remains conditional for the owner
             if (isCurrentUserProfile) {
-                chatButton.style.display = 'none'; // Hide chat button as a driver can't chat with themselves via this button
-                editMyProfileButton.style.display = 'block'; // Show the "Edit My Profile" button
-                editMyProfileButton.onclick = () => window.location.href = './driver-edit.html'; // Link to the driver's comprehensive edit page
+                editMyProfileButton.style.display = 'block'; 
+                editMyProfileButton.onclick = () => window.location.href = './driver-edit.html'; 
             } else {
-            // If the current user is a PASSENGER viewing a driver's profile:
-                chatButton.style.display = 'block'; // Show the "Chat with Driver" button
-                chatButton.onclick = () => {
-                    if (!auth.currentUser) {
-                        showAlert('Please sign in to chat with a driver.', 'warning');
-                        return;
-                    }
-                    window.location.href = `./chat.html?driverId=${driverId}&driverName=${encodeURIComponent(driver.name || 'Driver')}`;
-                };
-                editMyProfileButton.style.display = 'none'; // Hide the edit button
+                editMyProfileButton.style.display = 'none'; 
             }
         }
 
