@@ -110,7 +110,7 @@
             appId: "1:723828361707:web:c077cae44fcbd54c2f71ae",
             measurementId: "G-T79VTL0N2L"
         };
-        const GOOGLE_MAPS_API_KEY = 'AIzaSyBFTfrMJTbg-SAtJ6zaLbJPKLF8jpLSMxk';
+        const GOOGLE_MAPS_API_KEY = 'AIzaSyB1RbsWO7JEU3u2QscTiumFQWrTyll20E8';
         // =============================================================================
 
         // ---------- UI helpers ----------
@@ -145,6 +145,8 @@
                 });
                 map.addListener('click', (e)=> setUserLocation(e.latLng.lat(), e.latLng.lng()));
                 watchDrivers();
+                // Attempt to get user's current location on map load
+                tryToGetCurrentLocation();
             }catch(e){ showAlert('Maps init error: ' + e.message); }
         }
         function loadMaps(){
@@ -166,6 +168,30 @@
             refreshNearbyList();
         }
 
+        // New function to try and get user's current location
+        function tryToGetCurrentLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        setUserLocation(position.coords.latitude, position.coords.longitude);
+                        showAlert('Your location set automatically.', 'info', 3000);
+                    },
+                    (error) => {
+                        console.warn('Geolocation failed:', error);
+                        // Only show specific error if it's not a permission denied error
+                        if (error.code === error.PERMISSION_DENIED) {
+                            showAlert('Please grant location permissions to automatically find nearby taxis, or manually set your location.', 'warning', 7000);
+                        } else {
+                            showAlert('Could not get your current location: ' + error.message, 'warning', 7000);
+                        }
+                    },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                );
+            } else {
+                showAlert('Geolocation is not supported by your browser. Please manually set your location.', 'warning', 7000);
+            }
+        }
+
         // ---------- Driver presence / live update ----------
         let driversUnsub = null;
         function watchDrivers(){
@@ -179,6 +205,7 @@
                     if(window._riderMarkers){ window._riderMarkers.forEach(m=>m.setMap(null)); }
                     window._riderMarkers = [];
                     drivers.forEach(d=>{
+                        // Filter for drivers who have active lat/lng
                         if(typeof d.lat === 'number' && typeof d.lng === 'number'){
                             const marker = new google.maps.Marker({ position: { lat: d.lat, lng: d.lng }, map, title: d.name || 'Driver', icon: { url: "http://maps.google.com/mapfiles/ms/icons/yellow-dot.png" } });
                             // Link to driver-profile.html with driverId
@@ -190,51 +217,6 @@
                 refreshNearbyList();
             }, err => showAlert('Drivers stream error: ' + err.message));
         }
-        // ... (inside your existing displayDrivers or similar function in user-main.html) ...
-
-// Assuming 'driversDiv' is the container for your nearby taxi list
-const driversDiv = document.getElementById('nearby-taxis-list'); // Or similar ID
-driversDiv.innerHTML = ''; // Clear existing list
-
-if (drivers.length === 0) {
-    driversDiv.innerHTML = '<p class="text-muted text-center mt-3">No drivers found nearby.</p>';
-    return;
-}
-
-drivers.forEach(driver => {
-    // Check if lat and lng exist and are numbers to ensure driver is actively sharing location
-    if (typeof driver.lat !== 'number' || typeof driver.lng !== 'number') {
-        return; // Skip drivers not sharing live location
-    }
-
-    const driverElement = document.createElement('div');
-    driverElement.className = 'card mb-2 p-3'; // Bootstrap styling for each driver card
-
-    driverElement.innerHTML = `
-        <div class="d-flex align-items-center mb-2">
-            ${driver.vehicleImage ? `<img src="${driver.vehicleImage}" class="rounded-circle me-3" style="width: 50px; height: 50px; object-fit: cover;" alt="Vehicle" onerror="this.onerror=null;this.src='https://placehold.co/50x50/e0e0e0/000000?text=🚗';" />` : `<img src="https://placehold.co/50x50/e0e0e0/000000?text=🚗" class="rounded-circle me-3" alt="Vehicle" />`}
-            <div>
-                <h6 class="mb-0">${driver.name || 'Unknown Driver'}</h6>
-                <small class="text-muted">${driver.vehicle || 'Vehicle Info Not Available'}</small>
-                <p class="mb-0 text-success fw-bold">₹${driver.costPerKm ? driver.costPerKm.toFixed(2) : 'N/A'} / km</p>
-            </div>
-        </div>
-        <div class="d-flex justify-content-end gap-2 mt-2">
-            <button class="btn btn-sm btn-outline-primary" 
-                    onclick="window.location.href='./driver-profile.html?driverId=${driver.uid}&driverName=${encodeURIComponent(driver.name || 'Driver')}'">
-                View Profile
-            </button>
-            <button class="btn btn-sm btn-primary" 
-                    onclick="window.location.href='./chat.html?driverId=${driver.uid}&driverName=${encodeURIComponent(driver.name || 'Driver')}'">
-                Chat
-            </button>
-        </div>
-    `;
-    driversDiv.appendChild(driverElement);
-});
-
-// ... (rest of your displayDrivers function or parent script) ...
-
 
         // ---------- Nearby list ----------
         function distanceKm(a,b){
@@ -250,28 +232,47 @@ drivers.forEach(driver => {
             const drivers = window._lastDriversSnapshot || [];
             if(!currentLocation){
                 countEl.textContent = '';
-                const li = document.createElement('li'); li.className='list-group-item';
-                li.textContent = 'Click on the map or use "Use my location" to set your location.';
+                const li = document.createElement('li'); li.className='list-group-item text-muted text-center py-3'; // Added some padding and center text
+                li.innerHTML = '<h4>🗺️ Set Your Location!</h4><p>Click on the map or use "Use my location" button above to find nearby taxis.</p>';
                 list.appendChild(li); return;
             }
             const sorted = drivers
                 .filter(d=> typeof d.lat==='number' && typeof d.lng==='number')
                 .map(d=> ({...d, km: distanceKm(currentLocation, {lat:d.lat, lng:d.lng}) }))
                 .sort((a,b)=> a.km - b.km)
-                .slice(0, 20);
+                .slice(0, 20); // Limit to top 20 nearby drivers
+
             countEl.textContent = `${sorted.length} shown`;
+            if (sorted.length === 0) {
+                 const li = document.createElement('li'); li.className='list-group-item text-muted text-center py-3';
+                 li.innerHTML = '<h4>😔 No taxis found nearby.</h4><p>Try adjusting your location or check back later.</p>';
+                 list.appendChild(li); return;
+            }
+
             sorted.forEach(d=>{
                 const li = document.createElement('li');
                 li.className='list-group-item d-flex justify-content-between align-items-center';
-                const left = document.createElement('div');
-                left.innerHTML = `<strong>${d.name||'Driver'}</strong><br/><small>${d.vehicle||''}</small>`;
-                const right = document.createElement('div');
-                right.innerHTML = `<div>${d.km.toFixed(2)} km</div>`;
-                const btn = document.createElement('button'); btn.className='btn btn-sm btn-primary mt-1 ms-2'; btn.textContent = 'Chat';
-                // Link to chat.html with driverId and driverName
-                btn.addEventListener('click', ()=> window.location.href = `./chat.html?driverId=${d.id}&driverName=${encodeURIComponent(d.name || 'Driver')}`);
-                right.appendChild(btn);
-                li.appendChild(left); li.appendChild(right);
+                li.innerHTML = `
+                    <div class="d-flex align-items-center">
+                        ${d.vehicleImage ? `<img src="${d.vehicleImage}" class="rounded-circle me-3" style="width: 50px; height: 50px; object-fit: cover;" alt="Vehicle" onerror="this.onerror=null;this.src='https://placehold.co/50x50/e0e0e0/000000?text=🚗';" />` : `<img src="https://placehold.co/50x50/e0e0e0/000000?text=🚗" class="rounded-circle me-3" alt="Vehicle" />`}
+                        <div>
+                            <strong>${d.name||'Driver'}</strong><br/>
+                            <small class="text-muted">${d.vehicle||'Vehicle Info Not Available'}</small>
+                            <p class="mb-0 text-success fw-bold">₹${d.costPerKm ? d.costPerKm.toFixed(2) : 'N/A'} / km</p>
+                            <small class="text-info">${d.km.toFixed(2)} km away</small>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-column gap-2">
+                        <button class="btn btn-sm btn-outline-primary"
+                                onclick="window.location.href='./driver-profile.html?driverId=${d.id}&driverName=${encodeURIComponent(d.name || 'Driver')}'">
+                            View Profile
+                        </button>
+                        <button class="btn btn-sm btn-primary"
+                                onclick="window.location.href='./chat.html?driverId=${d.id}&driverName=${encodeURIComponent(d.name || 'Driver')}'">
+                            Chat
+                        </button>
+                    </div>
+                `;
                 list.appendChild(li);
             });
         }
@@ -293,6 +294,12 @@ drivers.forEach(driver => {
                     const prof = await getProfileData(other);
                     return { id: d.id, other, name: prof?.name || 'Driver' };
                 }));
+                if (items.length === 0) {
+                    const li = document.createElement('li'); li.className='list-group-item text-muted text-center py-3';
+                    li.textContent = 'No active chats.';
+                    ul.appendChild(li);
+                    return;
+                }
                 items.forEach(it=>{
                     const li = document.createElement('li'); li.className='list-group-item d-flex justify-content-between align-items-center';
                     li.innerHTML = `<span>${it.name}</span>`;
@@ -367,7 +374,7 @@ drivers.forEach(driver => {
                         // All good, user is a passenger
                         renderHeaderSummary();
                         loadChatList();
-                        loadMaps(); // Initialize map and drivers for users
+                        loadMaps(); // Initialize map and drivers for users, which also attempts geolocation
                     }
                 }).catch(err => {
                     showAlert('Error fetching profile: ' + err.message);
@@ -430,11 +437,13 @@ drivers.forEach(driver => {
                 e.preventDefault();
                 if(auth.currentUser) {
                     getProfileData(auth.currentUser.uid).then(profile => {
-                        if(profile?.role === 'driver') {
+                        if (profile?.role === 'driver') {
                             window.location.href = './driver-edit.html';
                         } else {
                             window.location.href = './user-main.html';
                         }
+                    }).catch(err => {
+                        showAlert('Could not determine role for brand link. Staying on login.', 'info');
                     });
                 } else {
                     window.location.href = './login.html';
