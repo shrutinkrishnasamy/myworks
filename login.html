@@ -87,7 +87,6 @@
                 </div>
             </div>
         </div>
-    </div>
 
     <!-- Email Info Modal -->
     <div class="modal fade" id="emailInfoModal" tabindex="-1" aria-labelledby="emailInfoModalLabel" aria-hidden="true">
@@ -151,7 +150,7 @@
             appId: "1:723828361707:web:c077cae44fcbd54c2f71ae",
             measurementId: "G-T79VTL0N2L"
         };
-        const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY'; // This is not used on this page, but included for consistency
+        const GOOGLE_MAPS_API_KEY = 'AIzaSyB1RbsWO7JEU3u2QscTiumFQWrTyll20E8'; // This is not used on this page, but included for consistency
         // =============================================================================
 
         // ---------- UI helpers ----------
@@ -340,7 +339,8 @@
 
             // Redirect based on role
             if (role === 'driver') {
-                window.location.href = './driver-edit.html';
+                // Redirect drivers to their profile page (Page 6)
+                window.location.href = './driver-profile.html?driverId=' + user.uid;
             } else {
                 window.location.href = './user-main.html';
             }
@@ -400,7 +400,8 @@
                 
                 getProfileData(user.uid).then(profile => {
                     if (profile && profile.role === 'driver') {
-                        window.location.href = './driver-edit.html';
+                        // Redirect drivers to their profile page (Page 6)
+                        window.location.href = './driver-profile.html?driverId=' + user.uid;
                     } else {
                         window.location.href = './user-main.html';
                     }
@@ -452,12 +453,13 @@
 
         const brandLink = document.getElementById('brand-link');
         if (brandLink) {
-            brandLink.addEventListener('click', (e) => {
+             brandLink.addEventListener('click', (e) => {
                 e.preventDefault();
                 if (auth.currentUser) {
                     getProfileData(auth.currentUser.uid).then(profile => {
                         if (profile?.role === 'driver') {
-                            window.location.href = './driver-edit.html';
+                            // Redirect drivers to their profile page (Page 6)
+                            window.location.href = './driver-profile.html?driverId=' + auth.currentUser.uid;
                         } else {
                             window.location.href = './user-main.html';
                         }
@@ -479,13 +481,6 @@
             });
         }
 
-        // ---------- Boot ----------
-        // Initialize reCAPTCHA when the page loads
-        if (auth) {
-            auth.onAuthStateChanged(onAuthChanged);
-            setupRecaptcha(); // Call setupRecaptcha here
-        }
-
         // Add this event listener to ensure modal cleanup
         const emailInfoModalElement = document.getElementById('emailInfoModal');
         if (emailInfoModalElement) {
@@ -503,6 +498,9 @@
                 }
             });
         }
+
+        // ---------- Boot ----------
+        if(auth){ auth.onAuthStateChanged(onAuthChanged); }
     </script>
 </body>
 </html>
