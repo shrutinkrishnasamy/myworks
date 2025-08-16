@@ -89,6 +89,29 @@
         </div>
     </div>
 
+    <!-- Email Info Modal -->
+    <div class="modal fade" id="emailInfoModal" tabindex="-1" aria-labelledby="emailInfoModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="emailInfoModalLabel">✉️ Check Your Inbox!</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    We've sent an important email (verification or password reset) to your address.
+                    <br><br>
+                    If you don't see it in your primary inbox, please check your **Spam**, **Junk**, or **Promotions** folder.
+                    <br><br>
+                    To ensure you always receive our emails, please add `riderupee@gmail.com` to your contacts or mark our emails as "Not Spam."
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Got it!</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
     <!-- Footer -->
     <footer class="bg-dark text-white text-center text-lg-start mt-5">
         <div class="container p-4">
@@ -235,6 +258,8 @@
                 await handleSuccessfulLogin(res.user, role); // Call new handler
             } catch (e) {
                 showAlert('Email sign-in failed: ' + e.message, 'danger');
+                // Show modal for email issues specifically for login failures
+                showEmailInfoModal();
             }
         }
 
@@ -251,6 +276,7 @@
                 const res = await auth.createUserWithEmailAndPassword(email, password);
                 await res.user.sendEmailVerification(); // Send verification email
                 showAlert('Registration successful! Please check your email for a verification link to activate your account.', 'success', 10000);
+                showEmailInfoModal(); // Show modal after sending verification email
                 // After registration, the user is logged in. Now handle their profile and redirect.
                 const role = document.getElementById('role-select').value || 'user';
                 await handleSuccessfulLogin(res.user, role);
@@ -264,6 +290,7 @@
             if (user.providerData.some(p => p.providerId === 'password') && !user.emailVerified) {
                 showAlert('Please verify your email address. A verification link has been sent to your email.', 'warning', 8000);
                 document.getElementById('btn-resend-verification').style.display = 'block'; // Show resend button
+                showEmailInfoModal(); // Show modal for unverified email
                 await auth.signOut(); // Log out unverified user for security
                 return;
             } else {
@@ -325,6 +352,7 @@
                 try {
                     await user.sendEmailVerification();
                     showAlert('Verification email re-sent! Please check your inbox.', 'success', 8000);
+                    showEmailInfoModal(); // Show modal after re-sending verification email
                 } catch (e) {
                     showAlert('Failed to resend verification email: ' + e.message, 'danger');
                 }
@@ -341,11 +369,21 @@
             try {
                 await auth.sendPasswordResetEmail(email);
                 showAlert('Password reset email sent to ' + email + '. Please check your inbox.', 'success', 10000);
+                showEmailInfoModal(); // Show modal after sending password reset email
             } catch (e) {
                 showAlert('Failed to send password reset email: ' + e.message, 'danger');
             }
         }
         
+        // Function to show the email info modal
+        function showEmailInfoModal() {
+            const emailInfoModalElement = document.getElementById('emailInfoModal');
+            if (emailInfoModalElement) {
+                const emailInfoModal = new bootstrap.Modal(emailInfoModalElement);
+                emailInfoModal.show();
+            }
+        }
+
         // ---------- Auth state (only for re-entry to login.html if already logged in) ----------
         function onAuthChanged(user){
             // If a user is already authenticated and lands on login.html (e.g., by typing the URL)
@@ -355,6 +393,7 @@
                 if (user.providerData.some(p => p.providerId === 'password') && !user.emailVerified) {
                     showAlert('Please verify your email address to proceed. A verification link has been sent.', 'warning', 8000);
                     document.getElementById('btn-resend-verification').style.display = 'block';
+                    showEmailInfoModal(); // Show modal for unverified email on page load
                     // Do NOT redirect, keep them on login page.
                     return;
                 }
