@@ -61,6 +61,11 @@
                     <label class="form-label">Name</label>
                     <input id="driver-name-input" type="text" class="form-control" placeholder="Your Name" required />
                 </div>
+                <!-- New Phone Number Input -->
+                <div class="mb-3">
+                    <label class="form-label">Phone Number</label>
+                    <input id="driver-phone-input" type="tel" class="form-control" placeholder="Your 10-digit phone number" pattern="[0-9]{10}" title="Please enter a 10-digit phone number" />
+                </div>
                 <div class="mb-3">
                     <label class="form-label">Vehicle Image</label>
                     <input id="driver-vehicle-image-upload" type="file" accept="image/*" class="form-control" />
@@ -194,12 +199,12 @@
         }
 
         // ---------- Firebase boot ----------
-        let db = null, auth = null, storage = null;
+        let db = null, auth = null, storage = null; // Added storage
         try{
             firebase.initializeApp(firebaseConfig);
             auth = firebase.auth();
             db = firebase.firestore();
-            storage = firebase.storage();
+            storage = firebase.storage(); // Initialize Firebase Storage
             console.log("Firebase initialized successfully.");
         }catch(e){ 
             showAlert('Firebase init failed: ' + e.message, 'danger', 0); 
@@ -220,12 +225,15 @@
 
         // ---------- Image Upload Logic ----------
         async function handleImageUpload(event) {
+            console.log("handleImageUpload called.");
             const file = event.target.files[0];
             const imagePreview = document.getElementById('image-preview');
             const uploadStatus = document.getElementById('upload-status');
             const driverVehicleImageUpload = document.getElementById('driver-vehicle-image-upload');
 
             if (!file) {
+                console.log("No file selected, resetting preview.");
+                // If no file selected, reset to current profile image or placeholder
                 const u = auth.currentUser;
                 if (u) {
                     const p = await getProfileData(u.uid);
@@ -236,78 +244,122 @@
                 return;
             }
 
+            console.log("File selected:", file.name, "Type:", file.type, "Size:", file.size);
+
             if (!file.type.startsWith('image/')) {
                 showAlert('Please upload an image file (e.g., JPEG, PNG).', 'warning');
-                if (driverVehicleImageUpload) driverVehicleImageUpload.value = '';
+                console.warn("Invalid file type:", file.type);
+                if (driverVehicleImageUpload) driverVehicleImageUpload.value = ''; // Clear file input
                 if (imagePreview) imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image";
                 return;
             }
 
             if (file.size > 1 * 1024 * 1024) { // 1MB limit
                 showAlert('Image file size must be less than 1MB.', 'warning');
-                if (driverVehicleImageUpload) driverVehicleImageUpload.value = '';
+                console.warn("File too large:", file.size, "bytes.");
+                if (driverVehicleImageUpload) driverVehicleImageUpload.value = ''; // Clear file input
                 if (imagePreview) imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image";
                 return;
             }
 
+            // Display image preview
             const reader = new FileReader();
-            reader.onload = (e) => { if (imagePreview) imagePreview.src = e.target.result; };
+            reader.onload = (e) => {
+                if (imagePreview) imagePreview.src = e.target.result;
+                console.log("Image preview updated.");
+            };
             reader.readAsDataURL(file);
 
-            if (!auth.currentUser || !storage) {
-                showAlert('Not authenticated or Firebase Storage not initialized.', 'danger');
+            if (!auth.currentUser) {
+                showAlert('You must be signed in to upload an image.', 'danger');
+                console.error("No authenticated user found for upload.");
+                return;
+            }
+            if (!storage) {
+                showAlert('Firebase Storage is not initialized. Check your Firebase config.', 'danger');
+                console.error("Firebase Storage object is null.");
                 return;
             }
 
-            if (uploadStatus) uploadStatus.style.display = 'flex';
+            if (uploadStatus) uploadStatus.style.display = 'flex'; // Show spinner
+            console.log("Upload status spinner shown.");
 
             try {
+                // Create a storage reference
+                // Use a timestamp to ensure unique file names and avoid caching issues if same name file is re-uploaded
                 const fileName = `${auth.currentUser.uid}_${Date.now()}_${file.name}`;
+                console.log("Uploading to path:", `vehicle_images/${auth.currentUser.uid}/${fileName}`);
                 const storageRef = storage.ref(`vehicle_images/${auth.currentUser.uid}/${fileName}`);
-                const snapshot = await storageRef.put(file);
-                const downloadURL = await snapshot.ref.getDownloadURL();
                 
+                // Upload the file
+                const snapshot = await storageRef.put(file);
+                console.log("File upload snapshot:", snapshot);
+                
+                // Get the download URL
+                const downloadURL = await snapshot.ref.getDownloadURL();
+                console.log("Download URL obtained:", downloadURL);
+                
+                // Update Firestore with the new image URL
                 await db.collection('profiles').doc(auth.currentUser.uid).set({ vehicleImage: downloadURL }, { merge: true });
+                console.log("Firestore profile updated with new image URL.");
+                
                 showAlert('Image uploaded and saved successfully!', 'success');
             } catch (error) {
                 console.error("Image upload failed:", error);
                 showAlert(`Image upload failed: ${error.message}. Please check Firebase Storage rules.`, 'danger');
-                if (driverVehicleImageUpload) driverVehicleImageUpload.value = '';
+                if (driverVehicleImageUpload) driverVehicleImageUpload.value = ''; // Clear file input on error
+                // Reset preview to placeholder on error
                 if (imagePreview) imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image"; 
             } finally {
-                if (uploadStatus) uploadStatus.style.display = 'none';
+                if (uploadStatus) uploadStatus.style.display = 'none'; // Hide spinner
+                console.log("Upload status spinner hidden.");
             }
         }
 
         async function removeImage() {
+            console.log("removeImage called.");
             const u = auth.currentUser;
             const imagePreview = document.getElementById('image-preview');
             const driverVehicleImageUpload = document.getElementById('driver-vehicle-image-upload');
 
             if (!u) {
                 showAlert('Not signed in.', 'warning');
+                console.warn("Cannot remove image: No user signed in.");
                 return;
             }
 
             try {
+                // Get current profile data to check if there's an image to remove
                 const p = await getProfileData(u.uid);
                 const currentImageUrl = p?.vehicleImage;
+                console.log("Current image URL from profile:", currentImageUrl);
 
                 if (currentImageUrl) {
+                    // This is the part to uncomment for actual file deletion from Storage
                     try {
                         const imageRef = storage.refFromURL(currentImageUrl);
+                        console.log("Attempting to delete image from storage:", currentImageUrl);
                         await imageRef.delete();
+                        console.log("Image successfully deleted from Firebase Storage.");
                     } catch (storageError) {
+                        // Handle cases where the file might not exist in storage (e.g., if it was manually removed)
                         if (storageError.code === 'storage/object-not-found') {
                             console.warn("Image not found in storage, but URL was in Firestore. Proceeding to clear Firestore URL.", storageError);
                         } else {
                             console.error("Error deleting image from Storage:", storageError);
                             showAlert(`Error deleting image file from storage: ${storageError.message}`, 'warning');
+                            // Optionally, you might choose to stop here if storage deletion is critical
                         }
                     }
+                } else {
+                    console.log("No current image URL found in profile to delete from storage.");
                 }
 
+                // Update Firestore to remove the image URL
                 await db.collection('profiles').doc(u.uid).update({ vehicleImage: '' });
+                console.log("Firestore profile updated: vehicleImage cleared.");
+                
+                // Reset the image preview and file input
                 if (imagePreview) imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image";
                 if (driverVehicleImageUpload) driverVehicleImageUpload.value = '';
                 showAlert('Vehicle image removed successfully!', 'success');
@@ -328,7 +380,7 @@
                 return;
             }
 
-            map = new google.maps.Map(document.getElementById('map'), {
+            map = new google.maps.Map(document.getElementById('map'), { // Changed map ID here
                 center: { lat: initialLat, lng: initialLng },
                 zoom: 12,
                 fullscreenControl: false,
@@ -466,9 +518,12 @@
             const p = await getProfileData(u.uid);
             const imagePreview = document.getElementById('image-preview');
             const driverNameInput = document.getElementById('driver-name-input');
+            const driverPhoneInput = document.getElementById('driver-phone-input'); // Get new phone input
+            console.log("Loading driver data for edit page. Profile:", p);
 
             if(p){
                 if (driverNameInput) driverNameInput.value = p.name || u.displayName || '';
+                if (driverPhoneInput) driverPhoneInput.value = p.phone || u.phoneNumber || ''; // Populate phone
                 const driverVehicleInfo = document.getElementById('driver-vehicle-info');
                 if (driverVehicleInfo) driverVehicleInfo.value = p.vehicle||'';
                 const driverCostPerKm = document.getElementById('driver-cost-per-km');
@@ -494,15 +549,72 @@
                 if(driverLng) driverLng.value = currentLng.toFixed(6);
 
                 // Initialize or update map with current driver location
+                // IMPORTANT: map ID for this page is 'map' not 'profile-map'
                 if (map) { // If map already initialized
                     marker.setPosition({ lat: currentLat, lng: currentLng });
                     map.setCenter({ lat: currentLat, lng: currentLng });
                 } else { // Initialize map for the first time
-                    initializeMap(currentLat, currentLng);
+                    // Ensure that the initMap function for THIS page uses the correct 'map' ID
+                    if (typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
+                        map = new google.maps.Map(document.getElementById('map'), { // Use 'map' ID here
+                            center: { lat: currentLat, lng: currentLng },
+                            zoom: 12,
+                            fullscreenControl: false,
+                            mapTypeControl: false,
+                            streetViewControl: false
+                        });
+                        marker = new google.maps.Marker({
+                            position: { lat: currentLat, lng: currentLng },
+                            map: map,
+                            draggable: true,
+                            title: 'Your Location'
+                        });
+                        marker.addListener('dragend', () => {
+                            const pos = marker.getPosition();
+                            document.getElementById('driver-lat').value = pos.lat().toFixed(6);
+                            document.getElementById('driver-lng').value = pos.lng().toFixed(6);
+                            showAlert('Location updated from map marker.', 'info', 3000);
+                        });
+                        map.addListener('click', (e) => {
+                            marker.setPosition(e.latLng);
+                            document.getElementById('driver-lat').value = e.latLng.lat().toFixed(6);
+                            document.getElementById('driver-lng').value = e.latLng.lng().toFixed(6);
+                            showAlert('Location updated from map click.', 'info', 3000);
+                        });
+                        console.log("Google Map re-initialized for driver-edit.html.");
+                    }
                 }
             } else {
                  updateLocationStatus(false); // No profile data, not sharing
-                 if (!map) initializeMap(); // Initialize map with default if no profile
+                 // Initialize map with default if no profile exists yet
+                 if (!map && typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
+                     map = new google.maps.Map(document.getElementById('map'), {
+                         center: defaultLocation,
+                         zoom: 12,
+                         fullscreenControl: false,
+                         mapTypeControl: false,
+                         streetViewControl: false
+                     });
+                     marker = new google.maps.Marker({
+                         position: defaultLocation,
+                         map: map,
+                         draggable: true,
+                         title: 'Your Location'
+                     });
+                     marker.addListener('dragend', () => {
+                        const pos = marker.getPosition();
+                        document.getElementById('driver-lat').value = pos.lat().toFixed(6);
+                        document.getElementById('driver-lng').value = pos.lng().toFixed(6);
+                        showAlert('Location updated from map marker.', 'info', 3000);
+                    });
+                     map.addListener('click', (e) => {
+                        marker.setPosition(e.latLng);
+                        document.getElementById('driver-lat').value = e.latLng.lat().toFixed(6);
+                        document.getElementById('driver-lng').value = e.latLng.lng().toFixed(6);
+                        showAlert('Location updated from map click.', 'info', 3000);
+                    });
+                    console.log("Google Map initialized with default for driver-edit.html.");
+                 }
             }
         }
         
@@ -510,14 +622,19 @@
             e.preventDefault();
             const u = auth.currentUser; if(!u) return showAlert('Not signed in');
             const name = document.getElementById('driver-name-input').value.trim();
+            const phone = document.getElementById('driver-phone-input').value.trim(); // Get phone value
             const vehicle = document.getElementById('driver-vehicle-info').value.trim();
             const costPerKm = parseFloat(document.getElementById('driver-cost-per-km').value);
             
             if(!name) return showAlert('Name is required.');
+            // Basic phone validation (10 digits)
+            if (phone && !/^\d{10}$/.test(phone)) {
+                return showAlert('Please enter a valid 10-digit phone number, or leave it blank.', 'warning');
+            }
             if(!vehicle) return showAlert('Vehicle info is required.');
             if(Number.isNaN(costPerKm) || costPerKm <= 0) return showAlert('Enter a valid cost per km.');
             
-            const update = { name, vehicle, costPerKm };
+            const update = { name, phone, vehicle, costPerKm }; // Include phone in update
             await db.collection('profiles').doc(u.uid).set(update, { merge: true });
             showAlert('Driver details saved', 'success');
             renderHeaderSummary();
@@ -546,7 +663,7 @@
             const profileBtn = document.getElementById('btn-profile-nav');
             if (profileBtn) {
                 profileBtn.textContent = 'Driver Control';
-                profileBtn.onclick = () => window.location.href = './driver-edit.html';
+                profileBtn.onclick = () => window.location.href = './driver-edit.html'; // Points to driver-edit.html
                 profileBtn.style.display = 'inline-block';
             }
         }
@@ -674,7 +791,7 @@
                 if(auth.currentUser) {
                     getProfileData(auth.currentUser.uid).then(profile => {
                         if(profile?.role === 'driver') {
-                            window.location.href = './driver-edit.html';
+                            window.location.href = './driver-edit.html'; // Points to driver-edit.html
                         } else {
                             window.location.href = './user-main.html';
                         }
@@ -701,6 +818,15 @@
         }
 
         // ---------- Boot ----------
+        // IMPORTANT: loadMaps is not called here, as the map is part of loadDriverData which is triggered by onAuthChanged
+        // The map initialization is now within loadDriverData to ensure it runs only when a driver's data is loaded
+        // and the map container is visible.
+        if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
+            const s = document.createElement('script');
+            s.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places&callback=initMap`;
+            s.async = true; s.defer = true;
+            document.head.appendChild(s);
+        }
         if(auth){ auth.onAuthStateChanged(onAuthChanged); }
     </script>
 </body>
