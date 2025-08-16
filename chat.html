@@ -182,7 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error("Error creating chat doc:", error);
             showAlert(`Error setting up chat: ${error.message}`, 'danger');
-            return;
+            return; // <-- Added this return for robustness
         }
 
         currentMessagesUnsub = chatRef.collection('messages')
