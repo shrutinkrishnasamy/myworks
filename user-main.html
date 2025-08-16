@@ -190,6 +190,51 @@
                 refreshNearbyList();
             }, err => showAlert('Drivers stream error: ' + err.message));
         }
+        // ... (inside your existing displayDrivers or similar function in user-main.html) ...
+
+// Assuming 'driversDiv' is the container for your nearby taxi list
+const driversDiv = document.getElementById('nearby-taxis-list'); // Or similar ID
+driversDiv.innerHTML = ''; // Clear existing list
+
+if (drivers.length === 0) {
+    driversDiv.innerHTML = '<p class="text-muted text-center mt-3">No drivers found nearby.</p>';
+    return;
+}
+
+drivers.forEach(driver => {
+    // Check if lat and lng exist and are numbers to ensure driver is actively sharing location
+    if (typeof driver.lat !== 'number' || typeof driver.lng !== 'number') {
+        return; // Skip drivers not sharing live location
+    }
+
+    const driverElement = document.createElement('div');
+    driverElement.className = 'card mb-2 p-3'; // Bootstrap styling for each driver card
+
+    driverElement.innerHTML = `
+        <div class="d-flex align-items-center mb-2">
+            ${driver.vehicleImage ? `<img src="${driver.vehicleImage}" class="rounded-circle me-3" style="width: 50px; height: 50px; object-fit: cover;" alt="Vehicle" onerror="this.onerror=null;this.src='https://placehold.co/50x50/e0e0e0/000000?text=🚗';" />` : `<img src="https://placehold.co/50x50/e0e0e0/000000?text=🚗" class="rounded-circle me-3" alt="Vehicle" />`}
+            <div>
+                <h6 class="mb-0">${driver.name || 'Unknown Driver'}</h6>
+                <small class="text-muted">${driver.vehicle || 'Vehicle Info Not Available'}</small>
+                <p class="mb-0 text-success fw-bold">₹${driver.costPerKm ? driver.costPerKm.toFixed(2) : 'N/A'} / km</p>
+            </div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-2">
+            <button class="btn btn-sm btn-outline-primary" 
+                    onclick="window.location.href='./driver-profile.html?driverId=${driver.uid}&driverName=${encodeURIComponent(driver.name || 'Driver')}'">
+                View Profile
+            </button>
+            <button class="btn btn-sm btn-primary" 
+                    onclick="window.location.href='./chat.html?driverId=${driver.uid}&driverName=${encodeURIComponent(driver.name || 'Driver')}'">
+                Chat
+            </button>
+        </div>
+    `;
+    driversDiv.appendChild(driverElement);
+});
+
+// ... (rest of your displayDrivers function or parent script) ...
+
 
         // ---------- Nearby list ----------
         function distanceKm(a,b){
