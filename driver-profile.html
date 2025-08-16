@@ -167,6 +167,7 @@
                         ${driver.vehicleImage ? `<img src="${driver.vehicleImage}" class="profile-image-display mb-2" alt="Vehicle Image" onerror="this.onerror=null;this.src='https://placehold.co/200x150/e0e0e0/000000?text=No+Image';" />` : '<img src="https://placehold.co/200x150/e0e0e0/000000?text=No+Image" class="profile-image-display mb-2" alt="No Image" />'}
                         <h4>${driver.name || 'Driver'}</h4>
                         <p class="text-muted mb-0"><strong>Vehicle:</strong> ${driver.vehicle || 'Not specified'}</p>
+                        ${driver.phone ? `<p class="text-muted mb-0"><strong>Phone:</strong> ${driver.phone}</p>` : ''} <!-- Added phone number display -->
                         ${driver.costPerKm ? `<p class="fw-bold fs-5 text-success">₹${driver.costPerKm.toFixed(2)} / km</p>` : ''}
                         ${(typeof driver.lat === 'number' && typeof driver.lng === 'number') ?
                             `<p class="text-muted mb-0"><strong>Location:</strong> Currently Available</p>` :
