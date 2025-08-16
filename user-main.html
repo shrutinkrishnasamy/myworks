@@ -209,7 +209,7 @@
                         if(typeof d.lat === 'number' && typeof d.lng === 'number'){
                             const marker = new google.maps.Marker({ position: { lat: d.lat, lng: d.lng }, map, title: d.name || 'Driver', icon: { url: "http://maps.google.com/mapfiles/ms/icons/yellow-dot.png" } });
                             // Link to driver-profile.html with driverId
-                            marker.addListener('click', ()=> window.location.href = `./driver-profile.html?driverId=${d.id}`);
+                            marker.addListener('click', ()=> window.location.href = `./driver-profile.html?driverId=${d.id}`); // Points to driver-profile.html
                             window._riderMarkers.push(marker);
                         }
                     });
@@ -256,18 +256,18 @@
                     <div class="d-flex align-items-center">
                         ${d.vehicleImage ? `<img src="${d.vehicleImage}" class="rounded-circle me-3" style="width: 50px; height: 50px; object-fit: cover;" alt="Vehicle" onerror="this.onerror=null;this.src='https://placehold.co/50x50/e0e0e0/000000?text=🚗';" />` : `<img src="https://placehold.co/50x50/e0e0e0/000000?text=🚗" class="rounded-circle me-3" alt="Vehicle" />`}
                         <div>
-                            <strong>${d.name||'Driver'}</strong><br/>
-                            <small class="text-muted">${d.vehicle||'Vehicle Info Not Available'}</small>
+                            <strong>${d.name || 'Driver'}</strong><br/>
+                            <small class="text-muted">${d.vehicle || 'Vehicle Info Not Available'}</small>
                             <p class="mb-0 text-success fw-bold">₹${d.costPerKm ? d.costPerKm.toFixed(2) : 'N/A'} / km</p>
                             <small class="text-info">${d.km.toFixed(2)} km away</small>
                         </div>
                     </div>
                     <div class="d-flex flex-column gap-2">
-                        <button class="btn btn-sm btn-outline-primary"
+                        <button class="btn btn-sm btn-outline-primary" 
                                 onclick="window.location.href='./driver-profile.html?driverId=${d.id}&driverName=${encodeURIComponent(d.name || 'Driver')}'">
                             View Profile
                         </button>
-                        <button class="btn btn-sm btn-primary"
+                        <button class="btn btn-sm btn-primary" 
                                 onclick="window.location.href='./chat.html?driverId=${d.id}&driverName=${encodeURIComponent(d.name || 'Driver')}'">
                             Chat
                         </button>
@@ -342,7 +342,8 @@
             if (profileBtn) {
                 if (userRole === 'driver') {
                     profileBtn.textContent = 'Driver Control';
-                    profileBtn.onclick = () => window.location.href = './driver-edit.html';
+                    // Redirect drivers to their profile page (Page 6)
+                    profileBtn.onclick = () => window.location.href = './driver-profile.html?driverId=' + auth.currentUser.uid;
                 } else {
                     profileBtn.textContent = 'My Profile';
                     profileBtn.onclick = () => window.location.href = './user-profile.html';
@@ -368,8 +369,8 @@
                 // Check if user is actually a user (passenger)
                 getProfileData(user.uid).then(profile => {
                     if (profile?.role === 'driver') {
-                        // If a driver somehow lands here, redirect to their page
-                        window.location.href = './driver-edit.html';
+                        // If a driver somehow lands here, redirect to their profile page (Page 6)
+                        window.location.href = './driver-profile.html?driverId=' + user.uid;
                     } else {
                         // All good, user is a passenger
                         renderHeaderSummary();
@@ -438,7 +439,8 @@
                 if(auth.currentUser) {
                     getProfileData(auth.currentUser.uid).then(profile => {
                         if (profile?.role === 'driver') {
-                            window.location.href = './driver-edit.html';
+                            // Redirect drivers to their profile page (Page 6)
+                            window.location.href = './driver-profile.html?driverId=' + auth.currentUser.uid;
                         } else {
                             window.location.href = './user-main.html';
                         }
@@ -455,7 +457,8 @@
         const btnDriverMainShortcut = document.getElementById('btn-driver-main-shortcut');
         if (btnDriverMainShortcut) {
             btnDriverMainShortcut.addEventListener('click', () => {
-                window.location.href = './driver-edit.html';
+                // Redirect drivers to their profile page (Page 6)
+                window.location.href = './driver-profile.html?driverId=' + auth.currentUser.uid;
             });
         }
 
