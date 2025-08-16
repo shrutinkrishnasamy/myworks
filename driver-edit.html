@@ -27,6 +27,13 @@
             height: 1.2rem;
             border-width: .15em;
         }
+        #map {
+            height: 250px; /* Fixed height for the map */
+            width: 100%;
+            border-radius: 8px;
+            margin-top: 10px;
+            border: 1px solid #ddd;
+        }
     </style>
 </head>
 <body>
@@ -80,14 +87,16 @@
             <h5>Live Location Updates</h5>
             <div class="card p-3 bg-light">
                 <small class="text-muted mb-2">Your current location is how users find you. Enable auto-update for best results.</small>
+                <div id="live-location-status" class="text-center fw-bold mb-2"></div>
                 <div class="row g-2 mb-2">
-                    <div class="col-6"><input id="driver-lat" class="form-control form-control-sm" placeholder="Latitude" /></div>
-                    <div class="col-6"><input id="driver-lng" class="form-control form-control-sm" placeholder="Longitude" /></div>
+                    <div class="col-6"><input id="driver-lat" class="form-control form-control-sm" placeholder="Latitude" readonly /></div>
+                    <div class="col-6"><input id="driver-lng" class="form-control form-control-sm" placeholder="Longitude" readonly /></div>
                 </div>
-                <div class="d-flex gap-2">
-                    <button id="btn-update-loc" class="btn btn-sm btn-secondary" type="button">Manual Update</button>
+                <div id="map"></div> <!-- Google Map Container -->
+                <div class="d-flex gap-2 mt-3">
+                    <button id="btn-update-loc" class="btn btn-sm btn-secondary" type="button">Manual Update (from Map)</button>
                     <button id="btn-auto-loc" class="btn btn-sm btn-success" type="button">Start Auto-update (GPS)</button>
-                    <button id="btn-auto-loc-stop" class="btn btn-sm btn-danger" type="button" style="display:none">Stop</button>
+                    <button id="btn-auto-loc-stop" class="btn btn-sm btn-danger" type="button" style="display:none">Stop Sharing</button>
                 </div>
             </div>
 
@@ -147,7 +156,16 @@
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
+    <!-- Google Maps API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY_HERE&libraries=places&callback=initMap"></script>
+
     <script>
+        // Set up the initMap callback function globally or attach to window
+        window.initMap = function() {
+            // This function is called by the Google Maps API script once it loads
+            console.log("Google Map API loaded. Map will be initialized when driver data loads.");
+        };
+
         // ===================== CONFIG — REPLACE WITH YOUR KEYS =====================
         const firebaseConfig = {
             apiKey: "AIzaSyCCsKOb_1Ug4oHbtuhnqqHIKILXKjTIB1s",
@@ -158,7 +176,9 @@
             appId: "1:723828361707:web:c077cae44fcbd54c2f71ae",
             measurementId: "G-T79VTL0N2L"
         };
-        const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY'; // This is not used on this page, but included for consistency
+        // >>> IMPORTANT: REPLACE WITH YOUR ACTUAL GOOGLE MAPS API KEY <<<
+        const GOOGLE_MAPS_API_KEY = 'AIzaSyB1RbsWO7JEU3u2QscTiumFQWrTyll20E8'; 
+        // Ensure the key above is replaced in the <script src="...&key=..." tag also.
         // =============================================================================
 
         // ---------- UI helpers ----------
@@ -174,12 +194,12 @@
         }
 
         // ---------- Firebase boot ----------
-        let db = null, auth = null, storage = null; // Added storage
+        let db = null, auth = null, storage = null;
         try{
             firebase.initializeApp(firebaseConfig);
             auth = firebase.auth();
             db = firebase.firestore();
-            storage = firebase.storage(); // Initialize Firebase Storage
+            storage = firebase.storage();
             console.log("Firebase initialized successfully.");
         }catch(e){ 
             showAlert('Firebase init failed: ' + e.message, 'danger', 0); 
@@ -200,15 +220,12 @@
 
         // ---------- Image Upload Logic ----------
         async function handleImageUpload(event) {
-            console.log("handleImageUpload called.");
             const file = event.target.files[0];
             const imagePreview = document.getElementById('image-preview');
             const uploadStatus = document.getElementById('upload-status');
             const driverVehicleImageUpload = document.getElementById('driver-vehicle-image-upload');
 
             if (!file) {
-                console.log("No file selected, resetting preview.");
-                // If no file selected, reset to current profile image or placeholder
                 const u = auth.currentUser;
                 if (u) {
                     const p = await getProfileData(u.uid);
@@ -219,126 +236,80 @@
                 return;
             }
 
-            console.log("File selected:", file.name, "Type:", file.type, "Size:", file.size);
-
             if (!file.type.startsWith('image/')) {
                 showAlert('Please upload an image file (e.g., JPEG, PNG).', 'warning');
-                console.warn("Invalid file type:", file.type);
-                if (driverVehicleImageUpload) driverVehicleImageUpload.value = ''; // Clear file input
+                if (driverVehicleImageUpload) driverVehicleImageUpload.value = '';
                 if (imagePreview) imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image";
                 return;
             }
 
             if (file.size > 1 * 1024 * 1024) { // 1MB limit
                 showAlert('Image file size must be less than 1MB.', 'warning');
-                console.warn("File too large:", file.size, "bytes.");
-                if (driverVehicleImageUpload) driverVehicleImageUpload.value = ''; // Clear file input
+                if (driverVehicleImageUpload) driverVehicleImageUpload.value = '';
                 if (imagePreview) imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image";
                 return;
             }
 
-            // Display image preview
             const reader = new FileReader();
-            reader.onload = (e) => {
-                if (imagePreview) imagePreview.src = e.target.result;
-                console.log("Image preview updated.");
-            };
+            reader.onload = (e) => { if (imagePreview) imagePreview.src = e.target.result; };
             reader.readAsDataURL(file);
 
-            if (!auth.currentUser) {
-                showAlert('You must be signed in to upload an image.', 'danger');
-                console.error("No authenticated user found for upload.");
-                return;
-            }
-            if (!storage) {
-                showAlert('Firebase Storage is not initialized. Check your Firebase config.', 'danger');
-                console.error("Firebase Storage object is null.");
+            if (!auth.currentUser || !storage) {
+                showAlert('Not authenticated or Firebase Storage not initialized.', 'danger');
                 return;
             }
 
-            if (uploadStatus) uploadStatus.style.display = 'flex'; // Show spinner
-            console.log("Upload status spinner shown.");
+            if (uploadStatus) uploadStatus.style.display = 'flex';
 
             try {
-                // Create a storage reference
-                // Use a timestamp to ensure unique file names and avoid caching issues if same name file is re-uploaded
                 const fileName = `${auth.currentUser.uid}_${Date.now()}_${file.name}`;
-                console.log("Uploading to path:", `vehicle_images/${auth.currentUser.uid}/${fileName}`);
                 const storageRef = storage.ref(`vehicle_images/${auth.currentUser.uid}/${fileName}`);
-                
-                // Upload the file
                 const snapshot = await storageRef.put(file);
-                console.log("File upload snapshot:", snapshot);
-                
-                // Get the download URL
                 const downloadURL = await snapshot.ref.getDownloadURL();
-                console.log("Download URL obtained:", downloadURL);
                 
-                // Update Firestore with the new image URL
                 await db.collection('profiles').doc(auth.currentUser.uid).set({ vehicleImage: downloadURL }, { merge: true });
-                console.log("Firestore profile updated with new image URL.");
-                
                 showAlert('Image uploaded and saved successfully!', 'success');
             } catch (error) {
                 console.error("Image upload failed:", error);
                 showAlert(`Image upload failed: ${error.message}. Please check Firebase Storage rules.`, 'danger');
-                if (driverVehicleImageUpload) driverVehicleImageUpload.value = ''; // Clear file input on error
-                // Reset preview to placeholder on error
+                if (driverVehicleImageUpload) driverVehicleImageUpload.value = '';
                 if (imagePreview) imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image"; 
             } finally {
-                if (uploadStatus) uploadStatus.style.display = 'none'; // Hide spinner
-                console.log("Upload status spinner hidden.");
+                if (uploadStatus) uploadStatus.style.display = 'none';
             }
         }
 
         async function removeImage() {
-            console.log("removeImage called.");
             const u = auth.currentUser;
             const imagePreview = document.getElementById('image-preview');
             const driverVehicleImageUpload = document.getElementById('driver-vehicle-image-upload');
 
             if (!u) {
                 showAlert('Not signed in.', 'warning');
-                console.warn("Cannot remove image: No user signed in.");
                 return;
             }
 
             try {
-                // Get current profile data to check if there's an image to remove
                 const p = await getProfileData(u.uid);
                 const currentImageUrl = p?.vehicleImage;
-                console.log("Current image URL from profile:", currentImageUrl);
 
                 if (currentImageUrl) {
-                    // This is the part to uncomment for actual file deletion from Storage
                     try {
                         const imageRef = storage.refFromURL(currentImageUrl);
-                        console.log("Attempting to delete image from storage:", currentImageUrl);
                         await imageRef.delete();
-                        console.log("Image successfully deleted from Firebase Storage.");
                     } catch (storageError) {
-                        // Handle cases where the file might not exist in storage (e.g., if it was manually removed)
                         if (storageError.code === 'storage/object-not-found') {
                             console.warn("Image not found in storage, but URL was in Firestore. Proceeding to clear Firestore URL.", storageError);
                         } else {
                             console.error("Error deleting image from Storage:", storageError);
                             showAlert(`Error deleting image file from storage: ${storageError.message}`, 'warning');
-                            // Optionally, you might choose to stop here if storage deletion is critical
                         }
                     }
-                } else {
-                    console.log("No current image URL found in profile to delete from storage.");
                 }
 
-                // Update Firestore to remove the image URL
                 await db.collection('profiles').doc(u.uid).update({ vehicleImage: '' });
-                console.log("Firestore profile updated: vehicleImage cleared.");
-                
-                // Reset the image preview and file input
                 if (imagePreview) imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image";
                 if (driverVehicleImageUpload) driverVehicleImageUpload.value = '';
-                console.log("Image preview and file input reset.");
-
                 showAlert('Vehicle image removed successfully!', 'success');
             } catch (error) {
                 console.error("Error removing image process:", error);
@@ -346,58 +317,64 @@
             }
         }
 
-        // ---------- Profile UI & Logic ----------
-        async function loadDriverData(){
-            const u = auth.currentUser; if(!u) return;
-            const p = await getProfileData(u.uid);
-            const imagePreview = document.getElementById('image-preview');
-            const driverNameInput = document.getElementById('driver-name-input'); // Get new name input
+        // ---------- Google Map & Location Logic ----------
+        let map, marker;
+        const defaultLocation = { lat: 20.5937, lng: 78.9629 }; // Center of India
 
-            if(p){
-                if (driverNameInput) driverNameInput.value = p.name || u.displayName || ''; // Populate name
-                const driverVehicleInfo = document.getElementById('driver-vehicle-info');
-                if (driverVehicleInfo) driverVehicleInfo.value = p.vehicle||'';
-                const driverCostPerKm = document.getElementById('driver-cost-per-km');
-                if (driverCostPerKm) driverCostPerKm.value = p.costPerKm || 0;
-                
-                // Set image preview from saved URL
-                if (imagePreview) {
-                    imagePreview.src = p.vehicleImage || "https://placehold.co/150x150/e0e0e0/000000?text=No+Image";
-                    // Add onerror to fallback to placeholder if image URL is broken
-                    imagePreview.onerror = () => { imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image"; };
-                }
-
-                const driverLat = document.getElementById('driver-lat');
-                const driverLng = document.getElementById('driver-lng');
-                if(typeof p.lat === 'number' && driverLat) driverLat.value = p.lat;
-                if(typeof p.lng === 'number' && driverLng) driverLng.value = p.lng;
+        function initializeMap(initialLat = defaultLocation.lat, initialLng = defaultLocation.lng) {
+            if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
+                console.warn("Google Maps API not loaded yet. Retrying map initialization...");
+                setTimeout(() => initializeMap(initialLat, initialLng), 500);
+                return;
             }
-        }
-        
-        async function saveDriverDetails(e){
-            e.preventDefault();
-            const u = auth.currentUser; if(!u) return showAlert('Not signed in');
-            const name = document.getElementById('driver-name-input').value.trim(); // Get name value
-            const vehicle = document.getElementById('driver-vehicle-info').value.trim();
-            const costPerKm = parseFloat(document.getElementById('driver-cost-per-km').value);
-            
-            if(!name) return showAlert('Name is required.'); // Validate name
-            if(!vehicle) return showAlert('Vehicle info is required.');
-            if(Number.isNaN(costPerKm) || costPerKm <= 0) return showAlert('Enter a valid cost per km.');
-            
-            const update = { name, vehicle, costPerKm }; // Include name in update
-            await db.collection('profiles').doc(u.uid).set(update, { merge: true });
-            showAlert('Driver details saved', 'success');
-            renderHeaderSummary();
+
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: initialLat, lng: initialLng },
+                zoom: 12,
+                fullscreenControl: false,
+                mapTypeControl: false,
+                streetViewControl: false
+            });
+
+            marker = new google.maps.Marker({
+                position: { lat: initialLat, lng: initialLng },
+                map: map,
+                draggable: true, // Allow dragging the marker
+                title: 'Your Location'
+            });
+
+            // Update input fields when marker is dragged
+            marker.addListener('dragend', () => {
+                const pos = marker.getPosition();
+                document.getElementById('driver-lat').value = pos.lat().toFixed(6);
+                document.getElementById('driver-lng').value = pos.lng().toFixed(6);
+                showAlert('Location updated from map marker.', 'info', 3000);
+            });
+
+            // Update input fields when map is clicked
+            map.addListener('click', (e) => {
+                marker.setPosition(e.latLng);
+                document.getElementById('driver-lat').value = e.latLng.lat().toFixed(6);
+                document.getElementById('driver-lng').value = e.latLng.lng().toFixed(6);
+                showAlert('Location updated from map click.', 'info', 3000);
+            });
+            console.log("Google Map initialized.");
         }
 
         async function manualUpdateLoc(){
             const u = auth.currentUser; if(!u) return showAlert('Not signed in');
             const lat = parseFloat(document.getElementById('driver-lat').value);
             const lng = parseFloat(document.getElementById('driver-lng').value);
-            if(Number.isNaN(lat) || Number.isNaN(lng)) return showAlert('Enter valid lat/lng');
-            await db.collection('profiles').doc(u.uid).set({ lat, lng }, { merge:true });
-            showAlert('Location updated', 'success');
+            if(Number.isNaN(lat) || Number.isNaN(lng)) return showAlert('Enter valid lat/lng or select on map.');
+            
+            try {
+                await db.collection('profiles').doc(u.uid).set({ lat, lng }, { merge:true });
+                showAlert('Location updated from map/manual input.', 'success');
+                updateLocationStatus(true); // Indicate location is being shared
+            } catch (error) {
+                console.error("Error manual updating location:", error);
+                showAlert(`Failed to manual update location: ${error.message}`, 'danger');
+            }
         }
 
         let driverAutoTimer = null;
@@ -417,12 +394,27 @@
                 const driverLngEl = document.getElementById('driver-lng');
                 if (driverLatEl) driverLatEl.value = lat.toFixed(6);
                 if (driverLngEl) driverLngEl.value = lng.toFixed(6);
-                try{ await db.collection('profiles').doc(u.uid).set({ lat, lng }, { merge: true }); }catch(e){ console.log(e); }
-            }, (err)=> console.log('geo err', err), { enableHighAccuracy:true, timeout: 10000 });
-            tick();
+                if (map && marker) { // Update map marker if map is initialized
+                    const newPos = { lat, lng };
+                    marker.setPosition(newPos);
+                    map.setCenter(newPos); // Keep map centered on driver
+                }
+                try{ 
+                    await db.collection('profiles').doc(u.uid).set({ lat, lng }, { merge: true }); 
+                    updateLocationStatus(true); // Indicate location is being shared
+                }catch(e){ 
+                    console.error('Error saving auto location:', e); 
+                    showAlert('Failed to save auto location: ' + e.message, 'danger');
+                }
+            }, (err)=> { 
+                console.error('Geolocation error:', err);
+                showAlert('Geolocation failed: ' + err.message + '. Please ensure location permissions are granted.', 'danger', 10000);
+            }, { enableHighAccuracy:true, timeout: 10000 });
+            tick(); // Run immediately on start
             driverAutoTimer = setInterval(tick, 20000);
             showAlert('Auto location started', 'success');
         }
+
         function stopAutoLoc(){
             if(driverAutoTimer){
                 clearInterval(driverAutoTimer);
@@ -431,30 +423,106 @@
                 const btnAutoLocStop = document.getElementById('btn-auto-loc-stop');
                 if (btnAutoLoc) btnAutoLoc.style.display = 'inline-block';
                 if (btnAutoLocStop) btnAutoLocStop.style.display = 'none';
-                showAlert('Auto location stopped', 'info');
+                showAlert('Auto location update stopped.', 'info');
             }
             
-            // --- NEW: Clear location from Firestore to stop sharing ---
+            // Clear location from Firestore to stop sharing
             const u = auth.currentUser;
             if (u && db) {
                 db.collection('profiles').doc(u.uid).update({
-                    lat: firebase.firestore.FieldValue.delete(), // Set to undefined
-                    lng: firebase.firestore.FieldValue.delete()  // Set to undefined
+                    lat: firebase.firestore.FieldValue.delete(), // Remove the field
+                    lng: firebase.firestore.FieldValue.delete()  // Remove the field
                 }).then(() => {
                     showAlert('Live location sharing stopped.', 'info');
-                    // Also clear input fields
+                    // Clear input fields and reset map marker to default/clear
                     const driverLatEl = document.getElementById('driver-lat');
                     const driverLngEl = document.getElementById('driver-lng');
                     if (driverLatEl) driverLatEl.value = '';
                     if (driverLngEl) driverLngEl.value = '';
+                    if (marker) marker.setPosition(defaultLocation); // Move marker to default
+                    if (map) map.setCenter(defaultLocation); // Center map to default
+                    updateLocationStatus(false); // Indicate location is not being shared
                 }).catch(error => {
                     console.error("Error stopping location sharing:", error);
                     showAlert('Failed to stop live location sharing: ' + error.message, 'danger');
                 });
             }
-            // --- END NEW ---
+        }
+
+        function updateLocationStatus(isSharing) {
+            const statusEl = document.getElementById('live-location-status');
+            if (statusEl) {
+                if (isSharing) {
+                    statusEl.innerHTML = '<span class="text-success">✅ Sharing Live Location</span>';
+                } else {
+                    statusEl.innerHTML = '<span class="text-danger">❌ Not Sharing Live Location</span>';
+                }
+            }
+        }
+
+        // ---------- Profile UI & Logic ----------
+        async function loadDriverData(){
+            const u = auth.currentUser; if(!u) return;
+            const p = await getProfileData(u.uid);
+            const imagePreview = document.getElementById('image-preview');
+            const driverNameInput = document.getElementById('driver-name-input');
+
+            if(p){
+                if (driverNameInput) driverNameInput.value = p.name || u.displayName || '';
+                const driverVehicleInfo = document.getElementById('driver-vehicle-info');
+                if (driverVehicleInfo) driverVehicleInfo.value = p.vehicle||'';
+                const driverCostPerKm = document.getElementById('driver-cost-per-km');
+                if (driverCostPerKm) driverCostPerKm.value = p.costPerKm || 0;
+                
+                if (imagePreview) {
+                    imagePreview.src = p.vehicleImage || "https://placehold.co/150x150/e0e0e0/000000?text=No+Image";
+                    imagePreview.onerror = () => { imagePreview.src = "https://placehold.co/150x150/e0e0e0/000000?text=No+Image"; };
+                }
+
+                const driverLat = document.getElementById('driver-lat');
+                const driverLng = document.getElementById('driver-lng');
+                let currentLat = p.lat || defaultLocation.lat;
+                let currentLng = p.lng || defaultLocation.lng;
+
+                if(typeof p.lat === 'number' && typeof p.lng === 'number'){
+                    updateLocationStatus(true); // Driver has location
+                } else {
+                    updateLocationStatus(false); // Driver does not have location
+                }
+
+                if(driverLat) driverLat.value = currentLat.toFixed(6);
+                if(driverLng) driverLng.value = currentLng.toFixed(6);
+
+                // Initialize or update map with current driver location
+                if (map) { // If map already initialized
+                    marker.setPosition({ lat: currentLat, lng: currentLng });
+                    map.setCenter({ lat: currentLat, lng: currentLng });
+                } else { // Initialize map for the first time
+                    initializeMap(currentLat, currentLng);
+                }
+            } else {
+                 updateLocationStatus(false); // No profile data, not sharing
+                 if (!map) initializeMap(); // Initialize map with default if no profile
+            }
         }
         
+        async function saveDriverDetails(e){
+            e.preventDefault();
+            const u = auth.currentUser; if(!u) return showAlert('Not signed in');
+            const name = document.getElementById('driver-name-input').value.trim();
+            const vehicle = document.getElementById('driver-vehicle-info').value.trim();
+            const costPerKm = parseFloat(document.getElementById('driver-cost-per-km').value);
+            
+            if(!name) return showAlert('Name is required.');
+            if(!vehicle) return showAlert('Vehicle info is required.');
+            if(Number.isNaN(costPerKm) || costPerKm <= 0) return showAlert('Enter a valid cost per km.');
+            
+            const update = { name, vehicle, costPerKm };
+            await db.collection('profiles').doc(u.uid).set(update, { merge: true });
+            showAlert('Driver details saved', 'success');
+            renderHeaderSummary();
+        }
+
         // ---------- Header/Profile Summary ----------
         async function renderHeaderSummary(){
             const u = auth.currentUser;
@@ -467,7 +535,7 @@
             }
             
             const p = await getProfileData(u.uid);
-            const userRole = p?.role || 'user'; // Default to user if not set
+            const userRole = p?.role || 'user';
             
             if (nameEl) nameEl.textContent = p?.name || u.displayName || u.email || 'Guest';
             if (badge) {
@@ -477,7 +545,7 @@
 
             const profileBtn = document.getElementById('btn-profile-nav');
             if (profileBtn) {
-                profileBtn.textContent = 'Driver Control'; // Always Driver Control on this page
+                profileBtn.textContent = 'Driver Control';
                 profileBtn.onclick = () => window.location.href = './driver-edit.html';
                 profileBtn.style.display = 'inline-block';
             }
@@ -491,27 +559,16 @@
                 return;
             }
 
-            // Show confirmation modal
             const deleteModal = new bootstrap.Modal(document.getElementById('deleteAccountModal'));
             deleteModal.show();
 
-            // Handle confirmation from the modal
             document.getElementById('confirm-delete-account').onclick = async () => {
-                deleteModal.hide(); // Hide modal immediately after confirmation
-
-                // Re-authenticate user if necessary (important for security-sensitive operations like account deletion)
-                // If the user signed in recently, this might not be strictly needed, but it's good practice.
-                // For a real app, you'd prompt for password/OTP again here.
-                // For this example, we'll try to delete directly, assuming recent authentication.
-                
+                deleteModal.hide();
                 try {
-                    // 1. Delete user's profile data from Firestore
                     await db.collection('profiles').doc(u.uid).delete();
                     showAlert('Profile data deleted from Firestore.', 'info');
 
-                    // 2. Delete associated vehicle image from Storage (if exists)
-                    // This assumes you want to delete the image from storage when account is deleted
-                    const p = await getProfileData(u.uid); // Fetch profile again to get vehicleImage URL
+                    const p = await getProfileData(u.uid);
                     const currentImageUrl = p?.vehicleImage;
                     if (currentImageUrl) {
                         try {
@@ -528,16 +585,13 @@
                         }
                     }
 
-                    // 3. Delete the Firebase Authentication user
                     await u.delete();
                     showAlert('Account deleted successfully!', 'success');
-                    // Redirect to login page after successful deletion
                     window.location.href = './login.html';
 
                 } catch (error) {
                     console.error("Error deleting account:", error);
                     showAlert(`Account deletion failed: ${error.message}. You might need to re-authenticate if you signed in a long time ago.`, 'danger');
-                    // If error is 'auth/requires-recent-login', inform user they need to re-authenticate
                     if (error.code === 'auth/requires-recent-login') {
                         showAlert('Please re-authenticate (log out and log back in) before attempting to delete your account again, then try deleting immediately after logging in.', 'warning', 10000);
                     }
@@ -545,25 +599,21 @@
             };
         }
 
-
         // ---------- Auth state management for this page ----------
         function onAuthChanged(user){
             const logoutBtn = document.getElementById('btn-logout');
             if(user){
                 if (logoutBtn) logoutBtn.style.display='inline-block';
-                // Check if user is actually a driver
                 getProfileData(user.uid).then(profile => {
                     if (profile?.role !== 'driver') {
-                        // If not a driver, redirect them to user main page
                         window.location.href = './user-main.html';
                     } else {
-                        // All good, user is a driver
                         renderHeaderSummary();
-                        loadDriverData();
+                        loadDriverData(); // This will also initialize the map
                     }
                 }).catch(err => {
                     showAlert('Error fetching profile: ' + err.message);
-                    window.location.href = './login.html'; // Redirect to login on error
+                    window.location.href = './login.html';
                 });
             }else{
                 if (logoutBtn) logoutBtn.style.display='none';
@@ -635,7 +685,6 @@
             });
         }
 
-        // Event listeners for image upload and removal
         const driverVehicleImageUpload = document.getElementById('driver-vehicle-image-upload');
         if (driverVehicleImageUpload) {
             driverVehicleImageUpload.addEventListener('change', handleImageUpload);
@@ -646,7 +695,6 @@
             btnRemoveImage.addEventListener('click', removeImage);
         }
 
-        // New event listener for Delete Account button
         const btnDeleteAccount = document.getElementById('btn-delete-account');
         if (btnDeleteAccount) {
             btnDeleteAccount.addEventListener('click', deleteDriverAccount);
