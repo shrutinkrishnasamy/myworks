@@ -60,6 +60,7 @@
                             <button id="btn-email-signin" class="btn btn-info w-50" type="button">Sign In</button>
                             <button id="btn-email-register" class="btn btn-outline-info w-50" type="button">Register</button>
                         </div>
+                        <button id="btn-resend-verification" class="btn btn-sm btn-outline-secondary mt-2" style="display:none;">Resend Verification Email</button>
                     </div>
 
                     <div class="text-center text-muted my-2">— or —</div>
@@ -173,7 +174,7 @@
             try{
                 const provider = new firebase.auth.GoogleAuthProvider();
                 const res = await auth.signInWithPopup(provider);
-                await ensureProfile(res.user, { role });
+                await handleSuccessfulLogin(res.user, role); // Call new handler
             }catch(e){ showAlert('Google sign-in failed: ' + e.message); }
         }
 
@@ -194,7 +195,7 @@
             try{
                 const res = await confirmationResult.confirm(code);
                 const role = document.getElementById('role-select').value || 'user';
-                await ensureProfile(res.user, { role, phoneLogin: true });
+                await handleSuccessfulLogin(res.user, role, { phoneLogin: true }); // Call new handler
             }catch(e){ showAlert('OTP verification failed: ' + e.message); }
         }
 
@@ -207,7 +208,7 @@
             try {
                 const res = await auth.signInWithEmailAndPassword(email, password);
                 const role = document.getElementById('role-select').value || 'user';
-                await ensureProfile(res.user, { role });
+                await handleSuccessfulLogin(res.user, role); // Call new handler
             } catch (e) {
                 showAlert('Email sign-in failed: ' + e.message, 'danger');
             }
@@ -224,51 +225,61 @@
             }
             try {
                 const res = await auth.createUserWithEmailAndPassword(email, password);
+                await res.user.sendEmailVerification(); // Send verification email
+                showAlert('Registration successful! Please check your email for a verification link to activate your account.', 'success', 10000);
+                // After registration, the user is logged in. Now handle their profile and redirect.
                 const role = document.getElementById('role-select').value || 'user';
-                await ensureProfile(res.user, { role });
-                showAlert('Registration successful! You are now logged in.', 'success');
+                await handleSuccessfulLogin(res.user, role);
             } catch (e) {
                 showAlert('Email registration failed: ' + e.message, 'danger');
             }
         }
 
-        async function ensureProfile(user, opts={}){
-            if(!db) return;
+        async function handleSuccessfulLogin(user, role, opts = {}) {
+            // First, check if email is verified if it's an email/password account
+            if (user.providerData.some(p => p.providerId === 'password') && !user.emailVerified) {
+                showAlert('Please verify your email address. A verification link has been sent to your email.', 'warning', 8000);
+                document.getElementById('btn-resend-verification').style.display = 'block'; // Show resend button
+                await auth.signOut(); // Log out unverified user for security
+                return;
+            } else {
+                 document.getElementById('btn-resend-verification').style.display = 'none'; // Hide resend button
+            }
+
+            // Now ensure profile in Firestore and redirect
             const ref = db.collection('profiles').doc(user.uid);
             const snap = await ref.get();
             const newProfileData = {
                 uid: user.uid,
                 name: user.displayName || '',
-                email: user.email || user.email || '', // Use user.email for both existing and new
+                email: user.email || '',
                 phone: user.phoneNumber || '',
-                role: opts.role || 'user', // Use the selected role
+                role: role || 'user', // Use the selected role
                 vehicle: '',
                 costPerKm: 0,
                 vehicleImage: '',
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             };
 
-            if(!snap.exists){
+            if (!snap.exists) {
                 await ref.set(newProfileData);
-                console.log("New profile created with role:", opts.role);
+                console.log("New profile created with role:", role);
             } else {
                 const existingData = snap.data();
                 const updateData = {};
 
-                if(existingData.name === ''){
-                    updateData.name = user.displayName || (opts.role === 'driver' ? 'New Driver' : 'New User');
+                if (existingData.name === '') {
+                    updateData.name = user.displayName || (role === 'driver' ? 'New Driver' : 'New User');
                 }
-                // Always update email/phone if they come from auth and are empty in profile
                 if (!existingData.email && user.email) {
                     updateData.email = user.email;
                 }
                 if (!existingData.phone && user.phoneNumber) {
                     updateData.phone = user.phoneNumber;
                 }
-                // This is the key: always update the role to the one selected in the current login attempt
-                if(existingData.role !== opts.role){
-                    updateData.role = opts.role;
-                    console.log("Updating existing profile role to:", opts.role);
+                if (existingData.role !== role) {
+                    updateData.role = role;
+                    console.log("Updating existing profile role to:", role);
                 }
 
                 if (Object.keys(updateData).length > 0) {
@@ -276,11 +287,25 @@
                 }
             }
 
-            // This redirect logic is now the primary handler after successful login
-            if (opts.role === 'driver') {
-                window.location.href = './driver-edit.html'; // Redirect to driver control panel
+            // Redirect based on role
+            if (role === 'driver') {
+                window.location.href = './driver-edit.html';
             } else {
-                window.location.href = './user-main.html'; // Redirect to user main page
+                window.location.href = './user-main.html';
+            }
+        }
+
+        async function resendVerificationEmail() {
+            const user = auth.currentUser;
+            if (user && !user.emailVerified) {
+                try {
+                    await user.sendEmailVerification();
+                    showAlert('Verification email re-sent! Please check your inbox.', 'success', 8000);
+                } catch (e) {
+                    showAlert('Failed to resend verification email: ' + e.message, 'danger');
+                }
+            } else {
+                showAlert('No unverified email account logged in.', 'warning');
             }
         }
         
@@ -289,6 +314,14 @@
             // If a user is already authenticated and lands on login.html (e.g., by typing the URL)
             // we should redirect them to their respective main page based on their *stored* role.
             if(user){
+                // If it's an email/password user and not verified, keep them on login page to verify
+                if (user.providerData.some(p => p.providerId === 'password') && !user.emailVerified) {
+                    showAlert('Please verify your email address to proceed. A verification link has been sent.', 'warning', 8000);
+                    document.getElementById('btn-resend-verification').style.display = 'block';
+                    // Do NOT redirect, keep them on login page.
+                    return;
+                }
+                
                 getProfileData(user.uid).then(profile => {
                     if (profile && profile.role === 'driver') {
                         window.location.href = './driver-edit.html';
@@ -299,6 +332,8 @@
                     // If profile fetch fails (e.g., permissions), keep them on login page and alert
                     showAlert('Error fetching profile on page load: ' + err.message + '. Please try logging in again.', 'danger');
                 });
+            } else {
+                 document.getElementById('btn-resend-verification').style.display = 'none'; // Hide if no user
             }
             // If no user, stay on login.html, nothing to do here.
         }
@@ -327,6 +362,11 @@
         const btnEmailRegister = document.getElementById('btn-email-register');
         if (btnEmailRegister) {
             btnEmailRegister.addEventListener('click', handleEmailRegister);
+        }
+
+        const btnResendVerification = document.getElementById('btn-resend-verification');
+        if (btnResendVerification) {
+            btnResendVerification.addEventListener('click', resendVerificationEmail);
         }
 
         const brandLink = document.getElementById('brand-link');
