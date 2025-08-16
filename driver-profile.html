@@ -52,8 +52,11 @@
                 <div class="text-muted">Loading driver profile...</div>
             </div>
 
-            <div class="d-grid gap-2 mt-4">
-                <button class="btn btn-primary btn-lg" id="btn-chat-driver" style="display:none;">Chat Box</button>
+            <div class="d-grid gap-2 mt-4" id="driver-profile-actions">
+                <!-- This button will appear if a user is viewing ANOTHER driver's profile -->
+                <button class="btn btn-primary btn-lg" id="btn-chat-driver" style="display:none;">Chat with Driver</button>
+                <!-- This button will appear if the driver is viewing THEIR OWN profile -->
+                <button class="btn btn-outline-primary btn-lg" id="btn-edit-my-profile" style="display:none;">Edit My Profile</button>
             </div>
         </div>
     </div>
@@ -114,7 +117,7 @@
         }
 
         // ---------- Firebase boot ----------
-        let db = null, auth = null; // Storage not needed on this view-only page
+        let db = null, auth = null; 
         try{
             firebase.initializeApp(firebaseConfig);
             auth = firebase.auth();
@@ -143,11 +146,13 @@
             const driverId = params.get('driverId');
             const detailsEl = document.getElementById('driver-profile-details');
             const chatButton = document.getElementById('btn-chat-driver');
+            const editMyProfileButton = document.getElementById('btn-edit-my-profile'); // Get the edit button
             const profilePageTitle = document.getElementById('profile-page-title');
 
             if (!driverId) {
                 if (detailsEl) detailsEl.innerHTML = '<div class="alert alert-danger">No driver ID specified.</div>';
                 chatButton.style.display = 'none';
+                editMyProfileButton.style.display = 'none'; // Ensure hidden
                 return;
             }
 
@@ -156,10 +161,13 @@
             if (!driver || driver.role !== 'driver') {
                 if (detailsEl) detailsEl.innerHTML = '<div class="alert alert-warning">Driver profile not found or user is not a driver.</div>';
                 chatButton.style.display = 'none';
+                editMyProfileButton.style.display = 'none'; // Ensure hidden
                 return;
             }
             
-            profilePageTitle.textContent = `${driver.name || 'Driver'}'s Profile`;
+            const isCurrentUserProfile = (auth.currentUser && auth.currentUser.uid === driverId);
+
+            profilePageTitle.textContent = isCurrentUserProfile ? 'My Driver Profile' : `${driver.name || 'Driver'}'s Profile`;
 
             const profileHtml = `
                 <div class="card p-3 mb-3">
@@ -167,7 +175,7 @@
                         ${driver.vehicleImage ? `<img src="${driver.vehicleImage}" class="profile-image-display mb-2" alt="Vehicle Image" onerror="this.onerror=null;this.src='https://placehold.co/200x150/e0e0e0/000000?text=No+Image';" />` : '<img src="https://placehold.co/200x150/e0e0e0/000000?text=No+Image" class="profile-image-display mb-2" alt="No Image" />'}
                         <h4>${driver.name || 'Driver'}</h4>
                         <p class="text-muted mb-0"><strong>Vehicle:</strong> ${driver.vehicle || 'Not specified'}</p>
-                        ${driver.phone ? `<p class="text-muted mb-0"><strong>Phone:</strong> ${driver.phone}</p>` : ''} <!-- Added phone number display -->
+                        ${driver.phone ? `<p class="text-muted mb-0"><strong>Phone:</strong> ${driver.phone}</p>` : ''}
                         ${driver.costPerKm ? `<p class="fw-bold fs-5 text-success">₹${driver.costPerKm.toFixed(2)} / km</p>` : ''}
                         ${(typeof driver.lat === 'number' && typeof driver.lng === 'number') ?
                             `<p class="text-muted mb-0"><strong>Location:</strong> Currently Available</p>` :
@@ -178,15 +186,22 @@
             `;
             if (detailsEl) detailsEl.innerHTML = profileHtml;
 
-            // Show chat button for external users
-            chatButton.style.display = 'block';
-            chatButton.onclick = () => {
-                if (!auth.currentUser) {
-                    showAlert('Please sign in to chat with a driver.', 'warning');
-                    return;
-                }
-                window.location.href = `./chat.html?driverId=${driverId}&driverName=${encodeURIComponent(driver.name || 'Driver')}`;
-            };
+            // Conditionally show buttons
+            if (isCurrentUserProfile) {
+                chatButton.style.display = 'none'; // Hide chat if it's their own profile
+                editMyProfileButton.style.display = 'block'; // Show edit button
+                editMyProfileButton.onclick = () => window.location.href = './driver-edit.html'; // Link to driver-edit.html
+            } else {
+                chatButton.style.display = 'block'; // Show chat if viewing another's profile
+                chatButton.onclick = () => {
+                    if (!auth.currentUser) {
+                        showAlert('Please sign in to chat with a driver.', 'warning');
+                        return;
+                    }
+                    window.location.href = `./chat.html?driverId=${driverId}&driverName=${encodeURIComponent(driver.name || 'Driver')}`;
+                };
+                editMyProfileButton.style.display = 'none'; // Hide edit button
+            }
         }
 
         // ---------- Header/Profile Summary ----------
