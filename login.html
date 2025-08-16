@@ -485,6 +485,24 @@
             auth.onAuthStateChanged(onAuthChanged);
             setupRecaptcha(); // Call setupRecaptcha here
         }
+
+        // Add this event listener to ensure modal cleanup
+        const emailInfoModalElement = document.getElementById('emailInfoModal');
+        if (emailInfoModalElement) {
+            emailInfoModalElement.addEventListener('hidden.bs.modal', function () {
+                // Ensure body's overflow is reset (sometimes Bootstrap misses this)
+                document.body.style.overflow = '';
+                // Check if any other modals are open before removing backdrop
+                const openModals = document.querySelectorAll('.modal.show');
+                if (openModals.length === 0) {
+                    // Remove any lingering modal-backdrop elements
+                    const backdrops = document.querySelectorAll('.modal-backdrop');
+                    backdrops.forEach(backdrop => backdrop.remove());
+                    // Also ensure modal-open class is removed from body
+                    document.body.classList.remove('modal-open');
+                }
+            });
+        }
     </script>
 </body>
 </html>
