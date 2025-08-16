@@ -56,11 +56,14 @@
                         <label class="form-label">Email & Password</label>
                         <input id="email-input" type="email" class="form-control mb-2" placeholder="Email address" />
                         <input id="password-input" type="password" class="form-control mb-2" placeholder="Password" />
-                        <div class="d-flex gap-2">
+                        <div class="d-flex gap-2 mb-2">
                             <button id="btn-email-signin" class="btn btn-info w-50" type="button">Sign In</button>
                             <button id="btn-email-register" class="btn btn-outline-info w-50" type="button">Register</button>
                         </div>
-                        <button id="btn-resend-verification" class="btn btn-sm btn-outline-secondary mt-2" style="display:none;">Resend Verification Email</button>
+                        <div class="d-flex justify-content-between align-items-center mt-2">
+                           <button id="btn-resend-verification" class="btn btn-sm btn-outline-secondary" style="display:none;">Resend Verification Email</button>
+                           <button id="btn-forgot-password" class="btn btn-sm btn-link ms-auto" type="button">Forgot Password?</button>
+                        </div>
                     </div>
 
                     <div class="text-center text-muted my-2">— or —</div>
@@ -308,6 +311,19 @@
                 showAlert('No unverified email account logged in.', 'warning');
             }
         }
+
+        async function handlePasswordReset() {
+            const email = document.getElementById('email-input').value.trim();
+            if (!email) {
+                return showAlert('Please enter your email address to reset password.', 'warning');
+            }
+            try {
+                await auth.sendPasswordResetEmail(email);
+                showAlert('Password reset email sent to ' + email + '. Please check your inbox.', 'success', 10000);
+            } catch (e) {
+                showAlert('Failed to send password reset email: ' + e.message, 'danger');
+            }
+        }
         
         // ---------- Auth state (only for re-entry to login.html if already logged in) ----------
         function onAuthChanged(user){
@@ -367,6 +383,11 @@
         const btnResendVerification = document.getElementById('btn-resend-verification');
         if (btnResendVerification) {
             btnResendVerification.addEventListener('click', resendVerificationEmail);
+        }
+
+        const btnForgotPassword = document.getElementById('btn-forgot-password');
+        if (btnForgotPassword) {
+            btnForgotPassword.addEventListener('click', handlePasswordReset);
         }
 
         const brandLink = document.getElementById('brand-link');
