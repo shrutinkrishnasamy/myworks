@@ -165,11 +165,25 @@
         // ---------- Auth (Google + Phone + Email/Password) ----------
         let recaptchaVerifier = null, confirmationResult = null;
         function setupRecaptcha(){
+            // Clear any existing reCAPTCHA instance before creating a new one
+            if(recaptchaVerifier) {
+                recaptchaVerifier.clear();
+                recaptchaVerifier = null; // Ensure it's truly cleared
+            }
             try{
-                if(recaptchaVerifier) recaptchaVerifier.clear();
-                recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', { size: 'invisible' });
-                recaptchaVerifier.render();
-            }catch(e){ showAlert('reCAPTCHA error: ' + e.message); }
+                // Ensure auth object is available before creating RecaptchaVerifier
+                if (auth) {
+                    recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', { size: 'invisible' });
+                    recaptchaVerifier.render();
+                    console.log("reCAPTCHA verifier rendered.");
+                } else {
+                    console.error("Firebase Auth not initialized, cannot set up reCAPTCHA.");
+                    showAlert('Firebase Auth not ready for reCAPTCHA.', 'danger');
+                }
+            }catch(e){ 
+                showAlert('reCAPTCHA error: ' + e.message, 'danger'); 
+                console.error('reCAPTCHA setup failed:', e);
+            }
         }
 
         async function signInWithGoogle(){
@@ -185,11 +199,18 @@
             const raw = (document.getElementById('phone-input').value||'').replace(/\D/g,'');
             if(raw.length !== 10) return showAlert('Enter a valid 10-digit phone number.', 'warning');
             const phone = '+91' + raw;
-            setupRecaptcha();
+            
+            // Ensure reCAPTCHA is ready before sending OTP
+            if (!recaptchaVerifier) {
+                showAlert('Please wait, reCAPTCHA is still setting up. Try again in a moment.', 'info');
+                setupRecaptcha(); // Attempt to set it up if not ready
+                return;
+            }
+
             try{
                 confirmationResult = await auth.signInWithPhoneNumber(phone, recaptchaVerifier);
                 showAlert('OTP sent. Please check your phone.', 'success');
-            }catch(e){ showAlert('OTP send failed: ' + e.message); }
+            }catch(e){ showAlert('OTP send failed: ' + e.message, 'danger'); console.error('OTP send error:', e); }
         }
 
         async function verifyOtp(){
@@ -199,7 +220,7 @@
                 const res = await confirmationResult.confirm(code);
                 const role = document.getElementById('role-select').value || 'user';
                 await handleSuccessfulLogin(res.user, role, { phoneLogin: true }); // Call new handler
-            }catch(e){ showAlert('OTP verification failed: ' + e.message); }
+            }catch(e){ showAlert('OTP verification failed: ' + e.message, 'danger'); console.error('OTP verification error:', e); }
         }
 
         async function handleEmailSignIn(){
@@ -271,7 +292,7 @@
                 const existingData = snap.data();
                 const updateData = {};
 
-                if (existingData.name === '') {
+                if (existingData.name === ''){
                     updateData.name = user.displayName || (role === 'driver' ? 'New Driver' : 'New User');
                 }
                 if (!existingData.email && user.email) {
@@ -420,7 +441,11 @@
         }
 
         // ---------- Boot ----------
-        if(auth){ auth.onAuthStateChanged(onAuthChanged); }
+        // Initialize reCAPTCHA when the page loads
+        if (auth) {
+            auth.onAuthStateChanged(onAuthChanged);
+            setupRecaptcha(); // Call setupRecaptcha here
+        }
     </script>
 </body>
 </html>
