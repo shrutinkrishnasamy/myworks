@@ -136,11 +136,13 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("setupChat called.");
         const params = new URLSearchParams(window.location.search);
         let driverId = params.get('driverId');
-        let driverName = params.get('driverName');
+        let driverNameFromUrl = params.get('driverName'); // Get driverName from URL
+        
+        // Use driverName from URL first, then fallback to localStorage if available
+        let driverName = driverNameFromUrl || localStorage.getItem('lastDriverName');
 
-        // Recover from localStorage if missing in URL
+        // Recover from localStorage if driverId is missing in URL
         if (!driverId) driverId = localStorage.getItem('lastDriverId');
-        if (!driverName) driverName = localStorage.getItem('lastDriverName');
 
         const u = auth.currentUser;
         if (!u) {
@@ -149,19 +151,21 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         if (!driverId) {
-            showAlert('No driver selected for chat.', 'danger');
+            showAlert('No driver selected for chat. Please go back to main page and select a driver.', 'danger');
             return;
         }
 
-        // Save for refresh recovery
+        // Save for refresh recovery (always update with the latest from URL if present)
         localStorage.setItem('lastDriverId', driverId);
-        localStorage.setItem('lastDriverName', driverName);
+        if (driverNameFromUrl) { // Only update if driverName came from URL
+            localStorage.setItem('lastDriverName', driverNameFromUrl);
+        }
 
         const chatId = [u.uid, driverId].sort().join('_');
-        window.currentChat = { chatId, driverId, driverName };
+        window.currentChat = { chatId, driverId, driverName }; // Ensure driverName is stored here
 
         const chatWithNameEl = document.getElementById('chat-with-name');
-        if (chatWithNameEl) chatWithNameEl.textContent = driverName || 'Driver';
+        if (chatWithNameEl) chatWithNameEl.textContent = driverName || 'Driver'; // Display driver's name
 
         const box = document.getElementById('chat-messages');
         if (box) box.innerHTML = '<div class="text-muted small">Loading…</div>';
@@ -182,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error("Error creating chat doc:", error);
             showAlert(`Error setting up chat: ${error.message}`, 'danger');
-            return; // <-- Added this return for robustness
+            return;
         }
 
         currentMessagesUnsub = chatRef.collection('messages')
@@ -238,31 +242,40 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ---------- Header/Profile ----------
-    async function renderHeaderSummary() {
+    async function renderHeaderSummary(){
         const u = auth.currentUser;
         const nameEl = document.getElementById('user-name');
         const badge = document.getElementById('badge-role');
-        if (!u) return;
-
+        if(!u){ 
+            if (nameEl) nameEl.textContent=''; 
+            if (badge) badge.style.display='none'; 
+            return; 
+        }
+        
         const p = await getProfileData(u.uid);
-        const role = p?.role || 'user';
+        const userRole = p?.role || 'user';
+        
         if (nameEl) nameEl.textContent = p?.name || u.displayName || u.email || 'Guest';
         if (badge) {
-            badge.textContent = role === 'driver' ? 'Driver' : 'User';
+            badge.textContent = userRole === 'driver' ? 'Driver' : 'User';
             badge.style.display = 'inline-block';
         }
 
         const profileBtn = document.getElementById('btn-profile-nav');
         if (profileBtn) {
-            profileBtn.textContent = role === 'driver' ? 'Driver Control' : 'My Profile';
-            profileBtn.onclick = () => window.location.href =
-                role === 'driver' ? './driver-edit.html' : './user-profile.html';
+            if (userRole === 'driver') {
+                profileBtn.textContent = 'Driver Control';
+                profileBtn.onclick = () => window.location.href = './driver-edit.html';
+            } else {
+                profileBtn.textContent = 'My Profile';
+                profileBtn.onclick = () => window.location.href = './user-profile.html';
+            }
             profileBtn.style.display = 'inline-block';
         }
     }
 
     // ---------- Auth ----------
-    function onAuthChanged(user) {
+    function onAuthChanged(user){
         console.log("Auth state changed:", user ? user.uid : "None");
         if (!user) {
             window.location.href = './login.html';
@@ -274,6 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ---------- Event Listeners ----------
     document.getElementById('chat-form')?.addEventListener('submit', sendMessage);
 
+    // Modified back button to go to driver-edit.html if driver, else user-main.html
     document.getElementById('btn-chat-back')?.addEventListener('click', () => {
         if (!auth.currentUser) {
             window.location.href = './login.html';
