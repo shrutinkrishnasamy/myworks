@@ -186,13 +186,15 @@
             `;
             if (detailsEl) detailsEl.innerHTML = profileHtml;
 
-            // Conditionally show buttons
+            // Conditionally show buttons based on whether the current user is the profile owner or not.
+            // If the current user IS the driver whose profile is being viewed:
             if (isCurrentUserProfile) {
-                chatButton.style.display = 'none'; // Hide chat if it's their own profile
-                editMyProfileButton.style.display = 'block'; // Show edit button
-                editMyProfileButton.onclick = () => window.location.href = './driver-edit.html'; // Link to driver-edit.html
+                chatButton.style.display = 'none'; // Hide chat button as a driver can't chat with themselves via this button
+                editMyProfileButton.style.display = 'block'; // Show the "Edit My Profile" button
+                editMyProfileButton.onclick = () => window.location.href = './driver-edit.html'; // Link to the driver's comprehensive edit page
             } else {
-                chatButton.style.display = 'block'; // Show chat if viewing another's profile
+            // If the current user is a PASSENGER viewing a driver's profile:
+                chatButton.style.display = 'block'; // Show the "Chat with Driver" button
                 chatButton.onclick = () => {
                     if (!auth.currentUser) {
                         showAlert('Please sign in to chat with a driver.', 'warning');
@@ -200,7 +202,7 @@
                     }
                     window.location.href = `./chat.html?driverId=${driverId}&driverName=${encodeURIComponent(driver.name || 'Driver')}`;
                 };
-                editMyProfileButton.style.display = 'none'; // Hide edit button
+                editMyProfileButton.style.display = 'none'; // Hide the edit button
             }
         }
 
