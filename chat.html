@@ -149,11 +149,10 @@
                 }
                 if (!driverId) {
                     showAlert('No chat partner selected. Please go back to main page and select a driver.', 'danger');
-                    // Determine where to go back based on current user's role
                     getProfileData(u.uid).then(profile => {
                         window.location.href = profile?.role === 'driver' ? './driver-profile.html?driverId=' + u.uid : './user-main.html';
                     }).catch(() => {
-                        window.location.href = './user-main.html'; // Fallback
+                        window.location.href = './user-main.html';
                     });
                     return;
                 }
@@ -284,7 +283,7 @@
                     return;
                 }
                 renderHeaderSummary();
-                setupChat(); // Setup chat specific to this page
+                setupChat();
             }
 
             // ---------- Event Listeners ----------
@@ -298,7 +297,7 @@
                 getProfileData(auth.currentUser.uid).then(profile => {
                     window.location.href = profile?.role === 'driver'
                         ? './driver-profile.html?driverId=' + auth.currentUser.uid : './user-main.html';
-                }).catch(() => window.location.href = './user-main.html'); // Fallback
+                }).catch(() => window.location.href = './user-main.html');
             });
 
             document.getElementById('btn-logout')?.addEventListener('click', () => {
